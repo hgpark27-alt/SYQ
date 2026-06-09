@@ -1195,33 +1195,14 @@ export default function App() {
 
       case TABS.QUOTE:
         return (
-          <>
-            {draftQuotes.length > 0 && (
-              <div className="card" style={{marginBottom:12,padding:"10px 16px"}}>
-                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                  <span style={{fontSize:12,fontWeight:600,color:"#6b7280"}}>초안 목록:</span>
-                  {draftQuotes.map((q) => (
-                    <button
-                      key={q.id}
-                      className={`btn ${q.id === activeQuoteId ? "btn-primary" : "btn-ghost"}`}
-                      style={{padding:"4px 10px",fontSize:11}}
-                      onClick={() => setActiveQuoteId(q.id)}
-                    >
-                      {q.kitNo || q.recordKey?.slice(-8)} | {q.poNumber || "NO-PO"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <QuoteBuilder
-              key={activeQuoteId}
-              quote={activeQuote}
-              kits={kits}
-              quotes={quotes}
-              persistQuotes={persistQuotes}
-              onComplete={() => setTab(TABS.QUOTE_MGMT)}
-            />
-          </>
+          <QuoteBuilder
+            key={activeQuoteId}
+            quote={activeQuote}
+            kits={kits}
+            quotes={quotes}
+            persistQuotes={persistQuotes}
+            onComplete={() => setTab(TABS.QUOTE_MGMT)}
+          />
         );
 
       case TABS.SUMMARY:
