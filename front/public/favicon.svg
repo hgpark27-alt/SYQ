@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0b1222"/>
+      <stop offset="100%" stop-color="#050810"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background: dark navy rounded square -->
+  <rect width="512" height="512" rx="88" fill="url(#bgGrad)"/>
+
+  <!-- Chip border: top -->
+  <rect x="98" y="118" width="316" height="10" rx="5" fill="#2563eb"/>
+  <!-- Chip border: bottom -->
+  <rect x="98" y="384" width="316" height="10" rx="5" fill="#2563eb"/>
+  <!-- Chip border: left -->
+  <rect x="98" y="118" width="10" height="276" rx="5" fill="#2563eb"/>
+  <!-- Chip border: right -->
+  <rect x="404" y="118" width="10" height="276" rx="5" fill="#2563eb"/>
+
+  <!-- Left pins -->
+  <rect x="44" y="161" width="54" height="13" rx="6.5" fill="#60a5fa"/>
+  <rect x="44" y="203" width="54" height="13" rx="6.5" fill="#60a5fa"/>
+  <rect x="44" y="245" width="54" height="13" rx="6.5" fill="#60a5fa"/>
+  <rect x="44" y="287" width="54" height="13" rx="6.5" fill="#60a5fa"/>
+  <rect x="44" y="329" width="54" height="13" rx="6.5" fill="#60a5fa"/>
+
+  <!-- Right pins -->
+  <rect x="414" y="161" width="54" height="13" rx="6.5" fill="#60a5fa"/>
+  <rect x="414" y="203" width="54" height="13" rx="6.5" fill="#60a5fa"/>
+  <rect x="414" y="245" width="54" height="13" rx="6.5" fill="#60a5fa"/>
+  <rect x="414" y="287" width="54" height="13" rx="6.5" fill="#60a5fa"/>
+  <rect x="414" y="329" width="54" height="13" rx="6.5" fill="#60a5fa"/>
+
+  <!-- SQ monogram: bold white, vertically centered in chip body -->
+  <text x="256" y="330"
+    text-anchor="middle"
+    font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-weight="900"
+    font-size="208"
+    letter-spacing="-8"
+    fill="#ffffff">SQ</text>
+</svg>
