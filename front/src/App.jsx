@@ -474,15 +474,6 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
                 <AddonPill key={`${idx}-rework`} item={item} idx={idx} addon="rework" setAddon={setAddon} isCompleted={isCompleted} />
                 <AddonPill key={`${idx}-icpms`}  item={item} idx={idx} addon="icpms"  setAddon={setAddon} isCompleted={isCompleted} />
                 <AddonPill key={`${idx}-lpc`}    item={item} idx={idx} addon="lpc"    setAddon={setAddon} isCompleted={isCompleted} />
-                {!isCompleted
-                  ? <input value={item.remark || ""} placeholder="비고"
-                      style={{fontSize:11, border:"1px solid #e2e8f0", borderRadius:6,
-                        padding:"3px 6px", width:60, color:"#64748b"}}
-                      onChange={e => setItem(idx, { remark: e.target.value })} />
-                  : item.remark
-                    ? <span style={{fontSize:11, color:"#64748b", fontStyle:"italic", maxWidth:60}}>{item.remark}</span>
-                    : null
-                }
               </div>
 
               {/* 합계 */}
