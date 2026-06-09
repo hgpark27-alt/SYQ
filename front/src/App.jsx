@@ -110,11 +110,15 @@ function parseCase23(lines, kitNo, kitSerial, poNumber, kits) {
   let si = 0;
   for (const p of kit.parts) {
     const isSideNozzle = p.isSideNozzle === true || /side\s*nozzle/i.test(p.description);
+    const isHub = /hub/i.test(p.description) || /hub/i.test(p.partNo);
     if (isSideNozzle) {
       parts.push({ partNo: p.partNo, description: p.description, serialNo: "*EA", qty: sideNozzleQty });
     } else {
-      parts.push({ partNo: p.partNo, description: p.description, serialNo: serials[si] || "", qty: p.qty || 1 });
-      if (serials[si]) si++;
+      const matched = serials[si] || "";
+      // HUB: 시리얼 미감지 시 "없음" 표기 → 견적 0원 처리
+      const serialNo = matched ? matched : (isHub ? "없음" : "");
+      parts.push({ partNo: p.partNo, description: p.description, serialNo, qty: p.qty || 1 });
+      if (matched) si++;
     }
   }
   return { kitNo, kitSerial, poNumber, caseType: 23, parts };
@@ -176,6 +180,8 @@ function SmartGenerator({ kits, quotes, persistQuotes, onSendToQuote }) {
     const items = kit.parts.map(p => {
       const pd = parts.find(pp => pp.partNo === p.partNo);
       if (pd?.serialNo === "*EA") return newQuoteItem({ ...p, qty: pd.qty });
+      // HUB 파트: 시리얼 "없음" → 0원 처리
+      if (pd?.serialNo === "없음") return newQuoteItem({ ...p, cleaningPriceUSD: 0, reworkPriceUSD: 0, icpmsPriceUSD: 0, lpcPriceUSD: 0 });
       return newQuoteItem(p);
     });
     const smartSerialRows = parts
