@@ -1,84 +1,43 @@
 import * as gs from "./gsheets.js";
 
-const KEYS = {
-  kits:      "syq-kits",
-  quotes:    "syq-quotes",
-  tradedocs: "syq-tradedocs",
-  settings:  "syq-settings",
-  quoteSeq:  "syq-quote-seq"
-};
+// localStorage 없음 — Google Sheets가 유일한 저장소
 
-// ── 로컬 캐시 헬퍼 ───────────────────────────────────────────────
+export function bootstrapData() {}  // 구 로컬 서버 방식 호환용 (no-op)
 
-const readLocal = (key, fallback) => {
-  try { return JSON.parse(localStorage.getItem(key) ?? "null") ?? fallback; }
-  catch { return fallback; }
-};
-const writeLocal = (key, value) => localStorage.setItem(key, JSON.stringify(value));
-
-// ── 초기 부트스트랩 (구 로컬 서버 방식 — 호환 유지) ───────────────
-
-export function bootstrapData() {
-  const raw = window.__SYQ_STORAGE__;
-  if (!raw || typeof raw !== "object") return;
-  Object.entries(raw).forEach(([k, v]) => {
-    try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
-  });
-  try { delete window.__SYQ_STORAGE__; } catch {}
-}
-
-// ── Sheets → localStorage 전체 동기화 ───────────────────────────
+// ── 전체 pull (앱 로드 시) ────────────────────────────────────────
 
 export const pullFromSheets = async () => {
   const { kits, quotes, tradeDocs, config } = await gs.pullAll();
-  writeLocal(KEYS.kits,      kits);
-  writeLocal(KEYS.quotes,    quotes);
-  writeLocal(KEYS.tradedocs, tradeDocs);
-  if (config.settings)     writeLocal(KEYS.settings, config.settings);
-  if (config.quoteSeqMap)  writeLocal(KEYS.quoteSeq, config.quoteSeqMap);
-  return { kits, quotes, tradeDocs };
+  return {
+    kits,
+    quotes,
+    tradeDocs,
+    settings: config.settings  ?? { defaultExchangeRate: 1400, quoteAuthor: "SY Kim" },
+    quoteSeqMap: config.quoteSeqMap ?? {}
+  };
 };
-
-// ── sync 헬퍼 (fire-and-forget) ───────────────────────────────────
-
-const sync = (fn) => { if (gs.isSignedIn()) fn().catch(console.warn); };
 
 // ── KITS ─────────────────────────────────────────────────────────
 
-export const getKits      = ()  => readLocal(KEYS.kits, []);
-export const setKits      = (v) => {
-  writeLocal(KEYS.kits, v);
-  sync(() => gs.saveKitsToSheet(v));
-};
+export const setKits = (v) => gs.saveKitsToSheet(v).catch(console.error);
 
 // ── QUOTES ───────────────────────────────────────────────────────
 
-export const getQuotes    = ()  => readLocal(KEYS.quotes, []);
-export const setQuotes    = (v) => {
-  writeLocal(KEYS.quotes, v);
-  sync(() => gs.saveQuotesToSheet(v));
-};
+export const setQuotes = (v) => gs.saveQuotesToSheet(v).catch(console.error);
 
 // ── TRADE DOCS ───────────────────────────────────────────────────
 
-export const getTradeDocs = ()  => readLocal(KEYS.tradedocs, []);
-export const setTradeDocs = (v) => {
-  writeLocal(KEYS.tradedocs, v);
-  sync(() => gs.saveTradeDocsToSheet(v));
-};
+export const setTradeDocs = (v) => gs.saveTradeDocsToSheet(v).catch(console.error);
 
 // ── SETTINGS ─────────────────────────────────────────────────────
 
-export const getSettings  = ()  => readLocal(KEYS.settings, { defaultExchangeRate: 1400, quoteAuthor: "SY Kim" });
-export const setSettings  = (v) => {
-  writeLocal(KEYS.settings, v);
-  sync(() => gs.saveConfigKey("settings", v));
-};
+export const setSettings = (v) => gs.saveConfigKey("settings", v).catch(console.error);
 
 // ── QUOTE SEQ MAP ────────────────────────────────────────────────
 
-export const getQuoteSeqMap = ()  => readLocal(KEYS.quoteSeq, {});
+export const getQuoteSeqMap = () => window.__syqSeqMap ?? {};
+
 export const setQuoteSeqMap = (v) => {
-  writeLocal(KEYS.quoteSeq, v);
-  sync(() => gs.saveConfigKey("quoteSeqMap", v));
+  window.__syqSeqMap = v;  // 메모리에 유지 (세션 내 시퀀스 충돌 방지)
+  gs.saveConfigKey("quoteSeqMap", v).catch(console.error);
 };

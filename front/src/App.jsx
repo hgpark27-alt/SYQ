@@ -4,14 +4,13 @@ import {
   ClipboardList, Archive, Settings2
 } from "lucide-react";
 import {
-  bootstrapData,
-  getKits, setKits as storeSetKits,
-  getQuotes, setQuotes as storeSetQuotes,
-  getTradeDocs, setTradeDocs as storeSetTradeDocs,
-  getSettings,
+  setKits as storeSetKits,
+  setQuotes as storeSetQuotes,
+  setTradeDocs as storeSetTradeDocs,
+  setQuoteSeqMap, getQuoteSeqMap,
   pullFromSheets
 } from "./utils/storage";
-import { initGapi, initGsi, signIn, signOut, isSignedIn } from "./utils/gsheets";
+import { initGapi, initGsi, signIn, signOut } from "./utils/gsheets";
 import {
   calculateItem, calculateQuote,
   formatUSD,
@@ -1224,38 +1223,47 @@ export default function App() {
   const [tradeDocs, setTradeDocs] = useState([]);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
   const [parsedData, setParsedData]       = useState(null);
-  const [gUser, setGUser]   = useState(null);   // 로그인된 Google 계정 이메일
-  const [gSyncing, setGSyncing] = useState(false);
+  const [gReady, setGReady]     = useState(false);   // gapi+gsi 초기화 완료
+  const [gUser, setGUser]       = useState(null);
+  const [gLoading, setGLoading] = useState(false);   // 로그인 or 데이터 로딩 중
 
   const persistKits      = useCallback((v) => { setKits(v);      storeSetKits(v);      }, []);
   const persistQuotes    = useCallback((v) => { setQuotes(v);    storeSetQuotes(v);    }, []);
   const persistTradeDocs = useCallback((v) => { setTradeDocs(v); storeSetTradeDocs(v); }, []);
 
   useEffect(() => {
-    bootstrapData();
-    setKits(getKits());
-    setQuotes(getQuotes());
-    setTradeDocs(getTradeDocs());
-    Promise.all([initGapi(), initGsi()]).catch(console.warn);
+    Promise.all([initGapi(), initGsi()])
+      .then(() => setGReady(true))
+      .catch(console.warn);
   }, []);
 
+  const loadFromSheets = async () => {
+    setGLoading(true);
+    try {
+      const { kits: k, quotes: q, tradeDocs: t, quoteSeqMap } = await pullFromSheets();
+      setKits(k); setQuotes(q); setTradeDocs(t);
+      if (quoteSeqMap) window.__syqSeqMap = quoteSeqMap;
+    } finally {
+      setGLoading(false);
+    }
+  };
+
   const handleSignIn = async () => {
+    setGLoading(true);
     try {
       await signIn();
-      setGSyncing(true);
-      const { kits: k, quotes: q, tradeDocs: t } = await pullFromSheets();
-      setKits(k); setQuotes(q); setTradeDocs(t);
       setGUser("연결됨");
+      await loadFromSheets();
     } catch (e) {
       alert("Google 로그인 실패: " + e.message);
-    } finally {
-      setGSyncing(false);
+      setGLoading(false);
     }
   };
 
   const handleSignOut = () => {
     signOut();
     setGUser(null);
+    setKits([]); setQuotes([]); setTradeDocs([]);
   };
 
   const goToQuote = (id) => {
@@ -1352,6 +1360,31 @@ export default function App() {
     }
   };
 
+  // ── 로그인 전 화면 ──────────────────────────────────────────────
+  if (!gUser) {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f8fafc"}}>
+        <div style={{textAlign:"center",padding:40,background:"#fff",borderRadius:16,boxShadow:"0 4px 24px rgba(0,0,0,0.08)",minWidth:320}}>
+          <div style={{fontSize:28,fontWeight:800,color:"#1e293b",letterSpacing:-1,marginBottom:4}}>SYQ</div>
+          <div style={{fontSize:13,color:"#64748b",marginBottom:32}}>SYM3 Quotation — Google Sheets 연동</div>
+          <button
+            onClick={handleSignIn}
+            disabled={!gReady || gLoading}
+            style={{display:"flex",alignItems:"center",gap:10,margin:"0 auto",padding:"12px 24px",fontSize:14,fontWeight:600,background:gReady&&!gLoading?"#fff":"#f1f5f9",color:"#1e293b",border:"1.5px solid #e2e8f0",borderRadius:8,cursor:gReady&&!gLoading?"pointer":"default",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+            {gLoading
+              ? <span style={{color:"#94a3b8"}}>연결 중…</span>
+              : <>
+                  <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2.04a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.48A4.8 4.8 0 0 1 4.5 7.52V5.45H1.83a8 8 0 0 0 0 7.1l2.67-2.07z"/><path fill="#EA4335" d="M8.98 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59A8 8 0 0 0 1.83 5.45L4.5 7.52a4.77 4.77 0 0 1 4.48-3.94z"/></svg>
+                  Google 계정으로 로그인
+                </>
+            }
+          </button>
+          {!gReady && <div style={{marginTop:12,fontSize:11,color:"#94a3b8"}}>Google API 초기화 중…</div>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div id="root">
       <div className="sidebar">
@@ -1396,19 +1429,14 @@ export default function App() {
             <div className="topbar-stat">
               완료 명세서 <strong>{tradeDocs.filter(d => d.status === "COMPLETED").length}</strong>
             </div>
-            {gUser
-              ? <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>● Sheets 연결</span>
-                  {gSyncing && <span style={{fontSize:10,color:"#94a3b8"}}>동기화중…</span>}
-                  <button className="btn btn-ghost" style={{padding:"3px 8px",fontSize:11}}
-                    onClick={handleSignOut}>로그아웃</button>
-                </div>
-              : <button className="btn btn-ghost" style={{padding:"3px 10px",fontSize:11,display:"flex",alignItems:"center",gap:5}}
-                  onClick={handleSignIn} disabled={gSyncing}>
-                  <svg width="14" height="14" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2.04a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.48A4.8 4.8 0 0 1 4.5 7.52V5.45H1.83a8 8 0 0 0 0 7.1l2.67-2.07z"/><path fill="#EA4335" d="M8.98 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59A8 8 0 0 0 1.83 5.45L4.5 7.52a4.77 4.77 0 0 1 4.48-3.94z"/></svg>
-                  {gSyncing ? "연결 중…" : "Google Sheets 연결"}
-                </button>
-            }
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>● Sheets 연결</span>
+              {gLoading && <span style={{fontSize:10,color:"#94a3b8"}}>동기화 중…</span>}
+              <button className="btn btn-ghost" style={{padding:"3px 8px",fontSize:11}}
+                onClick={loadFromSheets} disabled={gLoading}>새로고침</button>
+              <button className="btn btn-ghost" style={{padding:"3px 8px",fontSize:11}}
+                onClick={handleSignOut}>로그아웃</button>
+            </div>
           </div>
         </div>
         <div className="content">
