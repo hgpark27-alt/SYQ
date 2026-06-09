@@ -278,56 +278,37 @@ const PILL_COLOR = {
 };
 const PILL_LABEL = { rework:"Rework", icpms:"ICPMS", lpc:"LPC" };
 
-function AddonPill({ item, idx, addon, editingPrice, setEditingPrice, setAddon, isCompleted }) {
+// 가격은 0247 관리에서만 설정 — 견적서에서는 클릭으로 ON/OFF 토글만 가능
+function AddonPill({ item, idx, addon, setAddon, isCompleted }) {
   const st    = item[addon];
   const col   = PILL_COLOR[addon];
   const label = PILL_LABEL[addon];
-  const isEd  = editingPrice?.idx === idx && editingPrice?.addon === addon;
-  const base  = { display:"inline-flex", alignItems:"center", borderRadius:20, fontSize:11, fontWeight:600, userSelect:"none" };
+  const base  = { display:"inline-flex", alignItems:"center", borderRadius:20, fontSize:11, fontWeight:600, userSelect:"none", cursor: isCompleted ? "default" : "pointer" };
 
   if (!st.on) {
     if (isCompleted) return null;
     return (
       <span onClick={() => setAddon(idx, addon, { on: true })}
-        style={{...base, padding:"3px 11px", background:"#f8fafc", color:"#94a3b8",
-          border:"1px dashed #d1d5db", cursor:"pointer", gap:4}}>
+        style={{...base, padding:"3px 11px", background:"#f8fafc", color:"#94a3b8", border:"1px dashed #d1d5db", gap:4}}>
         {label}
       </span>
     );
   }
   return (
-    <span style={{...base, padding:"3px 5px 3px 10px", background:col.bg, color:col.text, border:`1px solid ${col.border}`, gap:5}}>
+    <span onClick={() => !isCompleted && setAddon(idx, addon, { on: false })}
+      style={{...base, padding:"3px 10px", background:col.bg, color:col.text, border:`1px solid ${col.border}`, gap:5}}>
       <span>{label}</span>
       <span style={{opacity:.5}}>·</span>
-      {isCompleted
-        ? <span>${formatUSD(st.priceUSD)}</span>
-        : isEd
-          ? <input type="text" inputMode="decimal" defaultValue={st.priceUSD || ""}
-              autoFocus
-              style={{width:54, border:"none", background:"transparent",
-                outline:`1px solid ${col.border}`, borderRadius:4,
-                textAlign:"right", fontSize:11, color:col.text, padding:"0 3px"}}
-              onBlur={e => { setAddon(idx, addon, { priceUSD: parseFloat(e.target.value)||0 }); setEditingPrice(null); }}
-              onKeyDown={e => { if (e.key==="Enter") e.target.blur(); if (e.key==="Escape") setEditingPrice(null); }} />
-          : <span onClick={() => setEditingPrice({ idx, addon })}
-              style={{cursor:"text", textDecoration:"underline dotted", textUnderlineOffset:2}}>
-              ${formatUSD(st.priceUSD)}
-            </span>
-      }
-      {!isCompleted && (
-        <span onClick={() => { setAddon(idx, addon, { on:false, priceUSD:0 }); setEditingPrice(null); }}
-          style={{cursor:"pointer", opacity:.45, fontSize:14, lineHeight:1, padding:"0 3px", fontWeight:300}}>×</span>
-      )}
+      <span>${formatUSD(st.priceUSD)}</span>
     </span>
   );
 }
 
 // ─── QuoteBuilder ─────────────────────────────────────────────────────────────
 function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
-  const [local, setLocal]       = useState(null);
-  const [busy, setBusy]         = useState(false);
-  const [msg, setMsg]           = useState("");
-  const [editingPrice, setEditingPrice] = useState(null); // { idx, addon }
+  const [local, setLocal] = useState(null);
+  const [busy, setBusy]   = useState(false);
+  const [msg, setMsg]     = useState("");
 
   useEffect(() => {
     if (!quote) { setLocal(null); return; }
@@ -510,15 +491,9 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
                     </span>
                   )
                 }
-                <AddonPill key={`${idx}-rework`} item={item} idx={idx} addon="rework"
-                  editingPrice={editingPrice} setEditingPrice={setEditingPrice}
-                  setAddon={setAddon} isCompleted={isCompleted} />
-                <AddonPill key={`${idx}-icpms`} item={item} idx={idx} addon="icpms"
-                  editingPrice={editingPrice} setEditingPrice={setEditingPrice}
-                  setAddon={setAddon} isCompleted={isCompleted} />
-                <AddonPill key={`${idx}-lpc`} item={item} idx={idx} addon="lpc"
-                  editingPrice={editingPrice} setEditingPrice={setEditingPrice}
-                  setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-rework`} item={item} idx={idx} addon="rework" setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-icpms`} item={item} idx={idx} addon="icpms" setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-lpc`}   item={item} idx={idx} addon="lpc"   setAddon={setAddon} isCompleted={isCompleted} />
                 {/* Remark */}
                 {!isCompleted
                   ? <input value={item.remark || ""} placeholder="비고"
@@ -1033,9 +1008,10 @@ function KitManager({ kits, persistKits }) {
 
   const saveKit = () => {
     if (!kitForm.partNo.trim()) { alert("Kit No를 입력하세요 (예: 0247-06765)"); return; }
-    const kit = { ...editKit, partNo: kitForm.partNo.trim(), name: kitForm.name.trim() };
-    const exists = kits.find((k) => k.id === kit.id);
-    persistKits(exists ? kits.map((k) => (k.id === kit.id ? kit : k)) : [...kits, kit]);
+    const partNo = kitForm.partNo.trim();
+    const kit = { ...editKit, id: `kit-${partNo}`, partNo, name: kitForm.name.trim() };
+    const exists = kits.find((k) => k.id === kit.id || k.partNo === partNo);
+    persistKits(exists ? kits.map((k) => (k.id === kit.id || k.partNo === partNo ? kit : k)) : [...kits, kit]);
     setEditKit(null);
   };
 

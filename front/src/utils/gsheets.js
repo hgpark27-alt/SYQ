@@ -26,8 +26,9 @@ const sheetWrite = async (sheet, values) => {
 export const getKitsFromSheet = async () => {
   const rows = await sheetGet("KITS");
   return rows.filter(r => r[0]).map(r => ({
-    kitNo:     String(r[0] || ""),
-    kitName:   String(r[1] || ""),
+    id:        `kit-${String(r[0])}`,   // partNo 기반 안정적 id
+    partNo:    String(r[0] || ""),
+    name:      String(r[1] || ""),
     parts:     safeJson(r[2], []),
     updatedAt: String(r[3] || "")
   }));
@@ -35,7 +36,12 @@ export const getKitsFromSheet = async () => {
 
 export const saveKitsToSheet = async (kits) => {
   const now = new Date().toISOString();
-  const values = kits.map(k => [k.kitNo, k.kitName || "", JSON.stringify(k.parts || []), now]);
+  const values = kits.map(k => [
+    k.partNo,           // 0247-XXXXX
+    k.name || "",
+    JSON.stringify(k.parts || []),
+    now
+  ]);
   await sheetWrite("KITS", values);
 };
 
