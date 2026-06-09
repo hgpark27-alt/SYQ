@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import { calculateItem, buildQuoteFileName } from "./quote";
 
-const TEMPLATE_URL = "/sheet/견적서 양식.xlsx";
+const TEMPLATE_URL = `${import.meta.env.BASE_URL}sheet/견적서 양식.xlsx`;
 
 const esc = (s) =>
   String(s || "")

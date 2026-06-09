@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { buildTradeDocFileName } from "./quote";
 
-const TEMPLATE_URL = "/sheet/거래명세서 양식.xlsx";
+const TEMPLATE_URL = `${import.meta.env.BASE_URL}sheet/거래명세서 양식.xlsx`;
 
 const toText = (v) => String(v ?? "").trim();
 const toNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
