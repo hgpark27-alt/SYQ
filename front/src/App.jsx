@@ -313,9 +313,10 @@ function DevTab({ parsedData, kits, quotes, persistQuotes, onSendToQuote }) {
 
 // ─── QuoteBuilder ─────────────────────────────────────────────────────────────
 function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
-  const [local, setLocal] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [local, setLocal]       = useState(null);
+  const [busy, setBusy]         = useState(false);
+  const [msg, setMsg]           = useState("");
+  const [editingPrice, setEditingPrice] = useState(null); // { idx, addon }
 
   useEffect(() => {
     if (!quote) { setLocal(null); return; }
@@ -324,8 +325,8 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
       items: quote.items.map((it) => ({
         ...it,
         rework: { ...it.rework },
-        icpms: { ...it.icpms },
-        lpc: { ...it.lpc }
+        icpms:  { ...it.icpms  },
+        lpc:    { ...it.lpc    }
       }))
     });
   }, [quote?.id]);
@@ -339,43 +340,29 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
     </div>
   );
 
-  const setField = (key, val) => setLocal((p) => ({ ...p, [key]: val }));
-  const setItem  = (idx, patch) =>
-    setLocal((p) => ({ ...p, items: p.items.map((it, i) => i === idx ? { ...it, ...patch } : it) }));
-  const setAddon = (idx, addon, patch) =>
-    setLocal((p) => ({
-      ...p,
-      items: p.items.map((it, i) => i === idx ? { ...it, [addon]: { ...it[addon], ...patch } } : it)
-    }));
+  const isCompleted = local.status === "COMPLETED";
+  const grandTotal  = local.items.reduce((s, it) => s + calculateItem(it).totalPriceUSD, 0);
 
+  const setField = (key, val) => setLocal(p => ({ ...p, [key]: val }));
+  const setItem  = (idx, patch) =>
+    setLocal(p => ({ ...p, items: p.items.map((it, i) => i === idx ? { ...it, ...patch } : it) }));
+  const setAddon = (idx, addon, patch) =>
+    setLocal(p => ({ ...p, items: p.items.map((it, i) => i === idx ? { ...it, [addon]: { ...it[addon], ...patch } } : it) }));
   const setAllAddon = (addon, on) =>
     setLocal(p => ({ ...p, items: p.items.map(it => ({ ...it, [addon]: { ...it[addon], on } })) }));
-
-  const grandTotal = local.items.reduce((s, it) => s + calculateItem(it).totalPriceUSD, 0);
-  const addItem    = () => setLocal((p) => ({ ...p, items: [...p.items, newQuoteItem()] }));
-  const removeItem = (idx) => setLocal((p) => ({ ...p, items: p.items.filter((_, i) => i !== idx) }));
-
-  const loadKit = (kitPartNo) => {
-    const kit = kits.find((k) => k.partNo === kitPartNo);
-    if (!kit) return;
-    setLocal((p) => ({ ...p, kitNo: kit.partNo, kitName: kit.name, items: kit.parts.map((pt) => newQuoteItem(pt)) }));
-  };
 
   const saveLocal = (complete = false) => {
     if (complete && local.items.length === 0) { alert("항목이 없습니다."); return; }
     if (complete && !local.issueDate) { alert("발행일을 입력하세요."); return; }
-
     const { items } = calculateQuote(local.items);
     const grandTotalUSD = items.reduce((s, i) => s + i.totalPriceUSD, 0);
     let updated = { ...local, items, grandTotalUSD, updatedAt: new Date().toISOString() };
-
     if (complete) {
       updated.quotationNumber = makeQuotationNumber(updated.issueDate);
       updated.status = "COMPLETED";
       updated.completedAt = new Date().toISOString();
     }
-
-    persistQuotes(quotes.map((q) => (q.id === updated.id ? updated : q)));
+    persistQuotes(quotes.map(q => q.id === updated.id ? updated : q));
     setLocal(updated);
     setMsg(complete ? "완료 저장됨" : "저장됨");
     setTimeout(() => setMsg(""), 2000);
@@ -392,206 +379,221 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
     try { await downloadQuoteXlsx(getCalcQuote()); } catch (e) { alert("xlsx 오류: " + e.message); }
     finally { setBusy(false); }
   };
-
   const handlePdf = async () => {
     setBusy(true);
     try { await downloadQuotePdf(getCalcQuote()); } catch (e) { alert("PDF 오류: " + e.message); }
     finally { setBusy(false); }
   };
 
-  const isCompleted = local.status === "COMPLETED";
+  // ── Addon pill 컴포넌트 ────────────────────────────────────────
+  const PILL_COLOR = {
+    rework: { bg:"#dbeafe", text:"#1d4ed8", border:"#93c5fd" },
+    icpms:  { bg:"#f3e8ff", text:"#7c3aed", border:"#c4b5fd" },
+    lpc:    { bg:"#dcfce7", text:"#15803d", border:"#86efac" },
+  };
+  const PILL_LABEL = { rework:"Rework", icpms:"ICPMS", lpc:"LPC" };
+
+  const AddonPill = ({ idx, addon }) => {
+    const item  = local.items[idx];
+    const st    = item[addon];
+    const col   = PILL_COLOR[addon];
+    const label = PILL_LABEL[addon];
+    const isEd  = editingPrice?.idx === idx && editingPrice?.addon === addon;
+    const pillBase = { display:"inline-flex", alignItems:"center", borderRadius:20, fontSize:11, fontWeight:600, userSelect:"none" };
+
+    if (!st.on) {
+      if (isCompleted) return null;
+      return (
+        <span onClick={() => setAddon(idx, addon, { on: true })}
+          style={{...pillBase, padding:"3px 11px", background:"#f8fafc", color:"#94a3b8",
+            border:"1px dashed #d1d5db", cursor:"pointer", gap:4}}>
+          {label}
+        </span>
+      );
+    }
+    return (
+      <span style={{...pillBase, padding:"3px 5px 3px 10px", background:col.bg, color:col.text, border:`1px solid ${col.border}`, gap:5}}>
+        <span>{label}</span>
+        <span style={{opacity:.5}}>·</span>
+        {isCompleted
+          ? <span>${formatUSD(st.priceUSD)}</span>
+          : isEd
+            ? <input type="number" min="0" step="0.01" defaultValue={st.priceUSD} autoFocus
+                style={{width:54, border:"none", background:"transparent", outline:`1px solid ${col.border}`,
+                  borderRadius:4, textAlign:"right", fontSize:11, color:col.text, padding:"0 3px"}}
+                onBlur={e => { setAddon(idx, addon, { priceUSD: Number(e.target.value) }); setEditingPrice(null); }}
+                onKeyDown={e => { if (e.key==="Enter") e.target.blur(); if (e.key==="Escape") setEditingPrice(null); }} />
+            : <span onClick={() => setEditingPrice({ idx, addon })}
+                style={{cursor:"text", textDecoration:"underline dotted", textUnderlineOffset:2}}>
+                ${formatUSD(st.priceUSD)}
+              </span>
+        }
+        {!isCompleted && (
+          <span onClick={() => { setAddon(idx, addon, { on:false, priceUSD:0 }); setEditingPrice(null); }}
+            style={{cursor:"pointer", opacity:.45, fontSize:14, lineHeight:1, padding:"0 3px", fontWeight:300}}>×</span>
+        )}
+      </span>
+    );
+  };
 
   return (
     <div className="card">
-      <div className="card-title">
-        견적서 생성
-        {isCompleted && <span className="badge badge-green" style={{marginLeft:8}}>완료</span>}
-        {local.quotationNumber && <span style={{marginLeft:8,fontSize:12,color:"#2d73ba",fontWeight:600}}>{local.quotationNumber}</span>}
-      </div>
-
-      <div className="form-row">
-        <div className="form-group">
-          <label>PO 번호</label>
-          <input style={{width:180}} value={local.poNumber || ""} readOnly={isCompleted}
-            onChange={(e) => setField("poNumber", e.target.value)} placeholder="4521234567890" />
-        </div>
-        <div className="form-group">
-          <label>Kit Serial</label>
-          <input style={{width:150}} value={local.kitSerial || ""} readOnly={isCompleted}
-            onChange={(e) => setField("kitSerial", e.target.value)} placeholder="C-SYM3Y-068" />
-        </div>
-        <div className="form-group">
-          <label>Kit No</label>
-          <input style={{width:120}} value={local.kitNo || ""} readOnly={isCompleted}
-            onChange={(e) => setField("kitNo", normalizeKitNo(e.target.value) || e.target.value)} placeholder="0247-06765" />
-        </div>
-        <div className="form-group">
-          <label>발행일</label>
-          <input type="date" value={local.issueDate || ""} readOnly={isCompleted}
-            onChange={(e) => setField("issueDate", e.target.value)} />
-        </div>
-        {!isCompleted && kits.filter(k => !k.disabled).length > 0 && (
-          <div className="form-group">
-            <label>키트 프리셋</label>
-            <select defaultValue="" onChange={(e) => e.target.value && loadKit(e.target.value)}>
-              <option value="">-- 선택 --</option>
-              {kits.filter(k => !k.disabled).map((k) => (
-                <option key={k.id} value={k.partNo}>{k.partNo} — {k.name}</option>
-              ))}
-            </select>
+      {/* ── 헤더 ── */}
+      <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:16, flexWrap:"wrap"}}>
+        <span style={{fontSize:15, fontWeight:700, color:"#1e293b"}}>견적서</span>
+        {isCompleted && <span className="badge badge-green">완료</span>}
+        {local.quotationNumber && (
+          <span style={{fontSize:12, color:"#2d73ba", fontWeight:600, background:"#eff6ff",
+            padding:"2px 10px", borderRadius:6, border:"1px solid #bfdbfe"}}>
+            {local.quotationNumber}
+          </span>
+        )}
+        <div style={{flex:1}} />
+        {!isCompleted && (
+          <div style={{display:"flex", alignItems:"center", gap:5, flexWrap:"wrap"}}>
+            <span style={{fontSize:10, color:"#94a3b8", marginRight:2}}>전체</span>
+            {["rework","icpms","lpc"].map(a => (
+              <React.Fragment key={a}>
+                <span onClick={() => setAllAddon(a, true)}
+                  style={{padding:"2px 9px", borderRadius:20, fontSize:10, cursor:"pointer", fontWeight:600,
+                    background:PILL_COLOR[a].bg, color:PILL_COLOR[a].text, border:`1px solid ${PILL_COLOR[a].border}`}}>
+                  {PILL_LABEL[a]} ON
+                </span>
+                <span onClick={() => setAllAddon(a, false)}
+                  style={{padding:"2px 9px", borderRadius:20, fontSize:10, cursor:"pointer",
+                    background:"#f8fafc", color:"#94a3b8", border:"1px dashed #d1d5db", marginRight:4}}>
+                  OFF
+                </span>
+              </React.Fragment>
+            ))}
           </div>
         )}
       </div>
 
-      {local.items.length > 9 && (
-        <div className="alert alert-warn">항목이 9개 초과입니다. 견적서 양식은 최대 9개까지 표시됩니다.</div>
-      )}
-
-      <div className="table-wrap">
-        <table className="items-table">
-          <thead>
-            <tr>
-              <th style={{width:28}}>#</th>
-              <th style={{width:108}}>Part No</th>
-              <th>Description</th>
-              <th style={{width:42}}>Qty</th>
-              <th style={{width:88}}>세정가(USD)</th>
-              <th style={{width:52}}>스크랩</th>
-              <th style={{width:105}}>
-                Rework ($)
-                {!isCompleted && <div style={{fontSize:10,marginTop:2,fontWeight:400}}>
-                  <span onClick={() => setAllAddon("rework",true)} style={{cursor:"pointer",color:"#2d73ba"}}>전체</span>
-                  {" · "}
-                  <span onClick={() => setAllAddon("rework",false)} style={{cursor:"pointer",color:"#9ca3af"}}>해제</span>
-                </div>}
-              </th>
-              <th style={{width:90}}>
-                ICPMS ($)
-                {!isCompleted && <div style={{fontSize:10,marginTop:2,fontWeight:400}}>
-                  <span onClick={() => setAllAddon("icpms",true)} style={{cursor:"pointer",color:"#2d73ba"}}>전체</span>
-                  {" · "}
-                  <span onClick={() => setAllAddon("icpms",false)} style={{cursor:"pointer",color:"#9ca3af"}}>해제</span>
-                </div>}
-              </th>
-              <th style={{width:90}}>
-                LPC ($)
-                {!isCompleted && <div style={{fontSize:10,marginTop:2,fontWeight:400}}>
-                  <span onClick={() => setAllAddon("lpc",true)} style={{cursor:"pointer",color:"#2d73ba"}}>전체</span>
-                  {" · "}
-                  <span onClick={() => setAllAddon("lpc",false)} style={{cursor:"pointer",color:"#9ca3af"}}>해제</span>
-                </div>}
-              </th>
-              <th style={{width:95}}>합계(USD)</th>
-              <th style={{width:75}}>Remark</th>
-              {!isCompleted && <th style={{width:28}}></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {local.items.map((item, idx) => {
-              const calc = calculateItem(item);
-              return (
-                <tr key={item.id} className={item.isScrap ? "scrap-row" : ""}>
-                  <td className="td-center" style={{color:"#6b7280"}}>{idx + 1}</td>
-                  <td>
-                    <input value={item.partNo} readOnly={isCompleted} style={{width:"100%"}}
-                      onChange={(e) => setItem(idx, { partNo: e.target.value })} />
-                  </td>
-                  <td>
-                    <input value={item.description} readOnly={isCompleted} style={{width:"100%"}}
-                      onChange={(e) => setItem(idx, { description: e.target.value })} />
-                  </td>
-                  <td>
-                    <input type="number" min="1" value={item.qty} readOnly={isCompleted} style={{width:40}}
-                      onChange={(e) => setItem(idx, { qty: Number(e.target.value) })} />
-                  </td>
-                  <td>
-                    <input type="number" min="0" step="0.01" value={item.cleaningPriceUSD} readOnly={isCompleted} style={{width:84}}
-                      onChange={(e) => setItem(idx, { cleaningPriceUSD: Number(e.target.value) })} />
-                  </td>
-                  <td className="td-center">
-                    <input type="checkbox" checked={item.isScrap} disabled={isCompleted}
-                      onChange={(e) => setItem(idx, { isScrap: e.target.checked })} />
-                    {item.isScrap && <div className="scrap-label">30%</div>}
-                  </td>
-                  <td style={{padding:0,background:item.rework.on?"":"#f8fafc",cursor:(!isCompleted&&!item.rework.on)?"pointer":"default"}}
-                      onClick={!isCompleted&&!item.rework.on ? ()=>setAddon(idx,"rework",{on:true}) : undefined}>
-                    {item.rework.on
-                      ? <div style={{display:"flex",alignItems:"center",padding:"0 4px",gap:2}}>
-                          <input type="number" min="0" step="0.01" value={item.rework.priceUSD} readOnly={isCompleted}
-                            style={{flex:1,width:0,border:"none",outline:"none",background:"transparent",textAlign:"right",fontSize:13}}
-                            onClick={e=>e.stopPropagation()}
-                            onChange={(e)=>setAddon(idx,"rework",{priceUSD:Number(e.target.value)})} />
-                          {!isCompleted && <span onClick={(e)=>{e.stopPropagation();setAddon(idx,"rework",{on:false,priceUSD:0})}}
-                            style={{color:"#d1d5db",cursor:"pointer",fontSize:15,lineHeight:1,userSelect:"none"}}>×</span>}
-                        </div>
-                      : <div style={{textAlign:"center",color:"#d1d5db",fontSize:18,lineHeight:"36px",userSelect:"none"}}>—</div>
-                    }
-                  </td>
-                  <td style={{padding:0,background:item.icpms.on?"":"#f8fafc",cursor:(!isCompleted&&!item.icpms.on)?"pointer":"default"}}
-                      onClick={!isCompleted&&!item.icpms.on ? ()=>setAddon(idx,"icpms",{on:true}) : undefined}>
-                    {item.icpms.on
-                      ? <div style={{display:"flex",alignItems:"center",padding:"0 4px",gap:2}}>
-                          <input type="number" min="0" step="0.01" value={item.icpms.priceUSD} readOnly={isCompleted}
-                            style={{flex:1,width:0,border:"none",outline:"none",background:"transparent",textAlign:"right",fontSize:13}}
-                            onClick={e=>e.stopPropagation()}
-                            onChange={(e)=>setAddon(idx,"icpms",{priceUSD:Number(e.target.value)})} />
-                          {!isCompleted && <span onClick={(e)=>{e.stopPropagation();setAddon(idx,"icpms",{on:false,priceUSD:0})}}
-                            style={{color:"#d1d5db",cursor:"pointer",fontSize:15,lineHeight:1,userSelect:"none"}}>×</span>}
-                        </div>
-                      : <div style={{textAlign:"center",color:"#d1d5db",fontSize:18,lineHeight:"36px",userSelect:"none"}}>—</div>
-                    }
-                  </td>
-                  <td style={{padding:0,background:item.lpc.on?"":"#f8fafc",cursor:(!isCompleted&&!item.lpc.on)?"pointer":"default"}}
-                      onClick={!isCompleted&&!item.lpc.on ? ()=>setAddon(idx,"lpc",{on:true}) : undefined}>
-                    {item.lpc.on
-                      ? <div style={{display:"flex",alignItems:"center",padding:"0 4px",gap:2}}>
-                          <input type="number" min="0" step="0.01" value={item.lpc.priceUSD} readOnly={isCompleted}
-                            style={{flex:1,width:0,border:"none",outline:"none",background:"transparent",textAlign:"right",fontSize:13}}
-                            onClick={e=>e.stopPropagation()}
-                            onChange={(e)=>setAddon(idx,"lpc",{priceUSD:Number(e.target.value)})} />
-                          {!isCompleted && <span onClick={(e)=>{e.stopPropagation();setAddon(idx,"lpc",{on:false,priceUSD:0})}}
-                            style={{color:"#d1d5db",cursor:"pointer",fontSize:15,lineHeight:1,userSelect:"none"}}>×</span>}
-                        </div>
-                      : <div style={{textAlign:"center",color:"#d1d5db",fontSize:18,lineHeight:"36px",userSelect:"none"}}>—</div>
-                    }
-                  </td>
-                  <td className="td-num">${formatUSD(calc.totalPriceUSD)}</td>
-                  <td>
-                    <input value={item.remark || ""} readOnly={isCompleted} style={{width:70}}
-                      onChange={(e) => setItem(idx, { remark: e.target.value })} />
-                  </td>
-                  {!isCompleted && (
-                    <td>
-                      <button className="btn btn-danger" style={{padding:"3px 7px",fontSize:11}} onClick={() => removeItem(idx)}>✕</button>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-            <tr className="total-row">
-              <td colSpan={isCompleted ? 10 : 11} className="td-num" style={{paddingRight:14}}>
-                합계: <span style={{fontSize:14,fontWeight:700}}>$ {formatUSD(grandTotal)}</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      {/* ── 메타 정보 ── */}
+      <div style={{display:"flex", gap:20, flexWrap:"wrap", marginBottom:18,
+        padding:"12px 18px", background:"#f8fafc", borderRadius:10, border:"1px solid #e2e8f0"}}>
+        {[["Kit No", local.kitNo], ["PO", local.poNumber], ["Kit Serial", local.kitSerial]].map(([lbl, val]) => (
+          <div key={lbl}>
+            <div style={{fontSize:10, color:"#94a3b8", fontWeight:600, letterSpacing:.5, textTransform:"uppercase", marginBottom:3}}>{lbl}</div>
+            <div style={{fontSize:13, fontWeight:600, color:"#1e293b"}}>{val || "—"}</div>
+          </div>
+        ))}
+        <div>
+          <div style={{fontSize:10, color:"#94a3b8", fontWeight:600, letterSpacing:.5, textTransform:"uppercase", marginBottom:3}}>발행일</div>
+          {isCompleted
+            ? <div style={{fontSize:13, fontWeight:600, color:"#1e293b"}}>{local.issueDate || "—"}</div>
+            : <input type="date" value={local.issueDate || ""}
+                style={{fontSize:12, border:"1px solid #e2e8f0", borderRadius:6, padding:"3px 8px", color:"#1e293b"}}
+                onChange={e => setField("issueDate", e.target.value)} />
+          }
+        </div>
       </div>
 
+      {local.items.length > 9 && (
+        <div className="alert alert-warn" style={{marginBottom:12}}>항목이 9개 초과 — 견적서 양식은 최대 9개까지 출력됩니다.</div>
+      )}
+
+      {/* ── 파트 목록 ── */}
+      <div style={{display:"flex", flexDirection:"column", gap:6}}>
+        {local.items.map((item, idx) => {
+          const calc = calculateItem(item);
+          return (
+            <div key={item.id} style={{
+              display:"grid",
+              gridTemplateColumns:"24px 1fr 88px auto 72px",
+              alignItems:"center", gap:10,
+              padding:"11px 14px",
+              background: item.isScrap ? "#fffbf7" : "#fff",
+              border: `1px solid ${item.isScrap ? "#fcd34d" : "#e2e8f0"}`,
+              borderRadius:10
+            }}>
+              {/* 번호 */}
+              <div style={{color:"#cbd5e1", fontSize:11, fontWeight:700, textAlign:"center"}}>{idx+1}</div>
+
+              {/* 파트 정보 — 읽기 전용 */}
+              <div>
+                <div style={{fontSize:12, fontWeight:700, color:"#0f172a", marginBottom:2}}>
+                  {item.partNo || "—"}
+                </div>
+                <div style={{fontSize:11, color:"#64748b"}}>
+                  {item.description || "—"}
+                  <span style={{color:"#94a3b8", marginLeft:6}}>× {item.qty}</span>
+                </div>
+              </div>
+
+              {/* 세정가 — 읽기 전용 */}
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:9, color:"#94a3b8", marginBottom:3, textTransform:"uppercase", letterSpacing:.4}}>세정가</div>
+                <div style={{fontSize:13, fontWeight:600, color:"#1e293b"}}>${formatUSD(item.cleaningPriceUSD)}</div>
+              </div>
+
+              {/* 조건 pills */}
+              <div style={{display:"flex", flexWrap:"wrap", gap:5, alignItems:"center"}}>
+                {/* SCRAP */}
+                {!isCompleted
+                  ? <span onClick={() => setItem(idx, { isScrap: !item.isScrap })}
+                      style={{display:"inline-flex", alignItems:"center", padding:"3px 11px",
+                        borderRadius:20, fontSize:11, fontWeight:600, cursor:"pointer", userSelect:"none",
+                        background: item.isScrap ? "#fef3c7" : "#f8fafc",
+                        color: item.isScrap ? "#b45309" : "#94a3b8",
+                        border: item.isScrap ? "1px solid #fcd34d" : "1px dashed #d1d5db"}}>
+                      {item.isScrap ? "SCRAP 30%" : "SCRAP"}
+                    </span>
+                  : item.isScrap && (
+                    <span style={{display:"inline-flex", padding:"3px 11px", borderRadius:20, fontSize:11,
+                      fontWeight:600, background:"#fef3c7", color:"#b45309", border:"1px solid #fcd34d"}}>
+                      SCRAP 30%
+                    </span>
+                  )
+                }
+                <AddonPill idx={idx} addon="rework" />
+                <AddonPill idx={idx} addon="icpms" />
+                <AddonPill idx={idx} addon="lpc" />
+                {/* Remark */}
+                {!isCompleted
+                  ? <input value={item.remark || ""} placeholder="비고"
+                      style={{fontSize:11, border:"1px solid #e2e8f0", borderRadius:6,
+                        padding:"3px 8px", width:72, color:"#64748b"}}
+                      onChange={e => setItem(idx, { remark: e.target.value })} />
+                  : item.remark
+                    ? <span style={{fontSize:11, color:"#64748b", fontStyle:"italic"}}>{item.remark}</span>
+                    : null
+                }
+              </div>
+
+              {/* 합계 */}
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:9, color:"#94a3b8", marginBottom:3, textTransform:"uppercase", letterSpacing:.4}}>합계</div>
+                <div style={{fontSize:14, fontWeight:700, color:"#1e293b"}}>${formatUSD(calc.totalPriceUSD)}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── 총합 ── */}
+      <div style={{display:"flex", justifyContent:"flex-end", alignItems:"baseline", gap:8,
+        marginTop:12, padding:"12px 18px", background:"#f8fafc", borderRadius:10, border:"1px solid #e2e8f0"}}>
+        <span style={{fontSize:12, color:"#94a3b8"}}>총 합계</span>
+        <span style={{fontSize:20, fontWeight:800, color:"#1e293b", letterSpacing:-0.5}}>$ {formatUSD(grandTotal)}</span>
+      </div>
+
+      {/* ── 액션 ── */}
       <div className="actions" style={{marginTop:14}}>
         {!isCompleted && (
           <>
-            <button className="btn btn-ghost" onClick={addItem}>+ 항목 추가</button>
             <button className="btn btn-outline" onClick={() => saveLocal(false)}>임시저장</button>
             <button className="btn btn-success" onClick={() => saveLocal(true)}>✓ 완료 저장</button>
           </>
         )}
         <button className="btn btn-primary" onClick={handleXlsx} disabled={busy}>
-          {busy ? <span className="spinner"/> : null} xlsx
+          {busy ? <span className="spinner"/> : "xlsx"}
         </button>
         <button className="btn btn-outline" onClick={handlePdf} disabled={busy}>
-          {busy ? <span className="spinner"/> : null} PDF
+          {busy ? <span className="spinner"/> : "PDF"}
         </button>
-        {msg && <span style={{fontSize:12,color:"#3ab06b",fontWeight:600}}>✓ {msg}</span>}
+        {msg && <span style={{fontSize:12, color:"#3ab06b", fontWeight:600}}>✓ {msg}</span>}
       </div>
     </div>
   );
