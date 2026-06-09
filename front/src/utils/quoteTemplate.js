@@ -159,7 +159,7 @@ export async function generateQuoteXlsx(quote) {
   );
 
   // Remove existing data rows 20-29
-  xml = xml.replace(/<row\b[^>]*?\br="(2[0-9])"\b[^>]*?>[\s\S]*?<\/row>/g, "");
+  xml = xml.replace(/<row [^>]*r="2[0-9]"[^>]*>[\s\S]*?<\/row>/g, "");
 
   // Compute prices and build rows
   let totalUSD = 0;
