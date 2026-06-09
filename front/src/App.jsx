@@ -151,7 +151,6 @@ const newQuoteItem = (part = {}) => ({
 
 const TABS = {
   SMART:      "스마트 생성",
-  DEV:        "개발",
   QUOTE:      "견적서 생성",
   SUMMARY:    "요약정리",
   QUOTE_MGMT: "견적서 관리",
@@ -160,63 +159,19 @@ const TABS = {
   KIT_MGMT:   "키트 관리"
 };
 
-// ─── SmartGenerator ───────────────────────────────────────────────────────────
-function SmartGenerator({ kits, onParsed }) {
-  const [text, setText] = useState("");
-  const [lastResult, setLastResult] = useState(null);
+// ─── SmartGenerator (파싱 + 인라인 리뷰 + 견적서 생성) ───────────────────────
+function SmartGenerator({ kits, quotes, persistQuotes, onSendToQuote }) {
+  const [text, setText]   = useState("");
+  const [parsed, setParsed] = useState(null);
 
-  const handleParse = () => {
-    const result = parseSmart(text, kits);
-    setLastResult(result);
-    onParsed(result);
-  };
-
-  return (
-    <div>
-      <div className="card">
-        <div className="card-title">스마트 생성 — 데이터 붙여넣기 파싱</div>
-        <div className="alert alert-info" style={{ marginBottom: 12 }}>
-          고객 시스템 데이터를 탭(Tab) 구분 형태로 붙여넣으세요.<br />
-          <strong>케이스 1</strong> — 각 행에 Part No 포함 (세로 나열)<br />
-          <strong>케이스 2/3</strong> — Part No 없이 시리얼 가로 나열, 0247 관리 파트 목록 순서로 매핑
-        </div>
-        <textarea
-          className="smart-textarea"
-          placeholder="데이터를 여기에 붙여넣기 (Ctrl+V)..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-        <div className="actions">
-          <button className="btn btn-primary" onClick={handleParse} disabled={!text.trim()}>파싱 → 개발 탭에서 확인</button>
-          <button className="btn btn-ghost" onClick={() => { setText(""); setLastResult(null); onParsed(null); }}>초기화</button>
-        </div>
-      </div>
-      {lastResult && (
-        <div className="alert alert-info" style={{margin:"8px 0"}}>
-          파싱 완료 — Case {lastResult.caseType} / {lastResult.kitNo || "0247 없음"} / {lastResult.kitSerial || "시리얼 없음"}
-          <br/><span style={{fontSize:11}}>개발 탭에서 파트별 결과를 확인하세요.</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── DevTab (파싱 결과 검증) ──────────────────────────────────────────────────
-function DevTab({ parsedData, kits, quotes, persistQuotes, onSendToQuote }) {
-  if (!parsedData) return (
-    <div className="card">
-      <div className="empty-state">
-        <p>스마트 생성 탭에서 데이터를 붙여넣고 파싱하면 결과가 여기에 표시됩니다.</p>
-      </div>
-    </div>
-  );
-
-  const { kitNo, kitSerial, poNumber, caseType, parts, rawSerials, sideNozzleQty, kitNotFound } = parsedData;
+  const handleParse = () => setParsed(parseSmart(text, kits));
 
   const handleCreate = () => {
+    if (!parsed) return;
+    const { kitNo, kitSerial, poNumber, parts, kitNotFound } = parsed;
+    if (kitNotFound) { alert(`미등록 키트: ${kitNo}\n0247 관리에서 먼저 등록하세요.`); return; }
     const kit = kits.find(k => k.partNo === kitNo);
-    if (!kit) { alert(`미등록 키트: ${kitNo}\n0247 관리에서 먼저 등록하세요.`); return; }
-
+    if (!kit) { alert(`미등록 키트: ${kitNo}`); return; }
     const today = todayISO();
     const items = kit.parts.map(p => {
       const pd = parts.find(pp => pp.partNo === p.partNo);
@@ -226,88 +181,144 @@ function DevTab({ parsedData, kits, quotes, persistQuotes, onSendToQuote }) {
     const smartSerialRows = parts
       .filter(p => p.serialNo !== "*EA")
       .map(p => ({ id: uid(), partNo: p.partNo, description: p.description, serialNo: p.serialNo || "", status: "", kitSerial }));
-
     const newDraft = {
       id: `syq-draft-${uid()}`,
-      recordKey: `SYQ-${today.replace(/-/g, "")}-${uid().slice(0, 4).toUpperCase()}`,
-      status: "DRAFT",
-      quotationNumber: "",
-      issueDate: today,
-      poNumber: poNumber || "",
-      kitSerial: kitSerial || "",
-      kitNo: kitNo || "",
-      kitName: kit.name || "",
-      grandTotalUSD: 0,
-      items,
-      smartSerialRows,
-      smartDocDate: today,
-      updatedAt: new Date().toISOString(),
-      completedAt: ""
+      recordKey: `SYQ-${today.replace(/-/g,"")}-${uid().slice(0,4).toUpperCase()}`,
+      status: "DRAFT", quotationNumber: "", issueDate: today,
+      poNumber: poNumber || "", kitSerial: kitSerial || "",
+      kitNo: kitNo || "", kitName: kit.name || "",
+      grandTotalUSD: 0, items, smartSerialRows, smartDocDate: today,
+      updatedAt: new Date().toISOString(), completedAt: ""
     };
-
     persistQuotes([...quotes, newDraft]);
-    alert(`견적 초안 생성 완료 — ${kitNo} / ${kitSerial || "시리얼 없음"}`);
     onSendToQuote(newDraft.id);
   };
 
   return (
     <div>
       <div className="card">
-        <div className="card-title">
-          파싱 결과 검증
-          <span className="badge badge-green" style={{marginLeft:8}}>Case {caseType}</span>
-        </div>
-
-        <div className="form-row" style={{marginBottom:8}}>
-          <div className="form-group"><label>0247</label><input readOnly value={kitNo || "-"} style={{width:130}} /></div>
-          <div className="form-group"><label>Kit Serial</label><input readOnly value={kitSerial || "-"} style={{width:160}} /></div>
-          <div className="form-group"><label>PO</label><input readOnly value={poNumber || "-"} style={{width:140}} /></div>
-          {caseType === 23 && <div className="form-group"><label>Side Nozzle Qty</label><input readOnly value={sideNozzleQty ?? 8} style={{width:60}} /></div>}
-        </div>
-
-        {kitNotFound && (
-          <div className="alert alert-warn" style={{marginBottom:8}}>
-            미등록 키트 {kitNo} — 0247 관리에서 먼저 등록하세요. (케이스 2/3은 파트 목록 참조 필요)
+        <div style={{display:"flex", gap:8, alignItems:"flex-start"}}>
+          <textarea
+            style={{flex:1, height:72, resize:"vertical", fontSize:12, fontFamily:"monospace",
+              border:"1px solid #e2e8f0", borderRadius:8, padding:"8px", outline:"none", color:"#1e293b"}}
+            placeholder="고객 시스템 데이터 붙여넣기 (Ctrl+V)…"
+            value={text}
+            onChange={e => setText(e.target.value)}
+          />
+          <div style={{display:"flex", flexDirection:"column", gap:5, paddingTop:2}}>
+            <button className="btn btn-primary" style={{fontSize:12}} onClick={handleParse} disabled={!text.trim()}>파싱</button>
+            <button className="btn btn-ghost" style={{fontSize:11}} onClick={() => { setText(""); setParsed(null); }}>초기화</button>
           </div>
-        )}
-
-        {caseType === 23 && rawSerials?.length > 0 && (
-          <div style={{marginBottom:12,padding:"8px 12px",background:"var(--bg-secondary)",borderRadius:6}}>
-            <div style={{fontSize:11,color:"#6b7280",marginBottom:4}}>감지된 시리얼 후보 ({rawSerials.length}개)</div>
-            <div style={{fontFamily:"monospace",fontSize:11,wordBreak:"break-all"}}>{rawSerials.join(" · ")}</div>
-          </div>
-        )}
-
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr><th>#</th><th>Part No</th><th>Description</th><th>Serial No</th><th>Qty</th></tr>
-            </thead>
-            <tbody>
-              {parts.map((p, i) => (
-                <tr key={i}>
-                  <td className="td-center" style={{color:"#6b7280"}}>{i + 1}</td>
-                  <td style={{fontFamily:"monospace",fontSize:11}}>{p.partNo || <span style={{color:"#ccc"}}>-</span>}</td>
-                  <td>{p.description || <span style={{color:"#ccc"}}>-</span>}</td>
-                  <td style={{fontFamily:"monospace",fontSize:11}}>
-                    {p.serialNo === "*EA"
-                      ? <span className="badge badge-green">*EA × {p.qty}</span>
-                      : p.serialNo || <span style={{color:"#e07b2a"}}>없음</span>}
-                  </td>
-                  <td className="td-center">{p.qty}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="actions" style={{marginTop:14}}>
-          {!kitNotFound && parts.length > 0 && (
-            <button className="btn btn-success" onClick={handleCreate}>견적 초안 생성</button>
-          )}
         </div>
       </div>
+
+      {parsed && (
+        <div className="card" style={{marginTop:8}}>
+          <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:12}}>
+            <span style={{fontWeight:700, fontSize:14, color:"#1e293b"}}>파싱 결과</span>
+            <span className="badge badge-green">Case {parsed.caseType}</span>
+            {parsed.kitNotFound && <span style={{background:"#fef3c7",color:"#b45309",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:600}}>키트 미등록</span>}
+          </div>
+
+          <div style={{display:"flex", gap:24, marginBottom:12, flexWrap:"wrap",
+            padding:"10px 16px", background:"#f8fafc", borderRadius:8, border:"1px solid #e2e8f0"}}>
+            {[["0247", parsed.kitNo], ["Kit Serial", parsed.kitSerial], ["PO", parsed.poNumber]].map(([lbl,val]) => (
+              <div key={lbl}>
+                <div style={{fontSize:10, color:"#94a3b8", fontWeight:600, textTransform:"uppercase", marginBottom:3}}>{lbl}</div>
+                <div style={{fontSize:13, fontWeight:600, color:"#1e293b"}}>{val || "—"}</div>
+              </div>
+            ))}
+          </div>
+
+          {parsed.kitNotFound && (
+            <div className="alert alert-warn" style={{marginBottom:10}}>
+              미등록 키트 {parsed.kitNo} — 0247 관리에서 먼저 등록하세요.
+            </div>
+          )}
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>#</th><th>Part No</th><th>Description</th><th>Serial No</th><th>Qty</th></tr>
+              </thead>
+              <tbody>
+                {parsed.parts.map((p, i) => (
+                  <tr key={i}>
+                    <td className="td-center" style={{color:"#6b7280"}}>{i+1}</td>
+                    <td style={{fontFamily:"monospace",fontSize:11}}>{p.partNo || "—"}</td>
+                    <td>{p.description || "—"}</td>
+                    <td style={{fontFamily:"monospace",fontSize:11}}>
+                      {p.serialNo === "*EA"
+                        ? <span className="badge badge-green">*EA × {p.qty}</span>
+                        : p.serialNo || <span style={{color:"#e07b2a"}}>없음</span>}
+                    </td>
+                    <td className="td-center">{p.qty}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {!parsed.kitNotFound && parsed.parts.length > 0 && (
+            <div className="actions" style={{marginTop:12}}>
+              <button className="btn btn-success" onClick={handleCreate}>견적서 생성 →</button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+// ─── AddonPill (컴포넌트 외부에 정의 — 내부 정의 시 렌더마다 언마운트/리마운트) ─────────
+const PILL_COLOR = {
+  rework: { bg:"#dbeafe", text:"#1d4ed8", border:"#93c5fd" },
+  icpms:  { bg:"#f3e8ff", text:"#7c3aed", border:"#c4b5fd" },
+  lpc:    { bg:"#dcfce7", text:"#15803d", border:"#86efac" },
+};
+const PILL_LABEL = { rework:"Rework", icpms:"ICPMS", lpc:"LPC" };
+
+function AddonPill({ item, idx, addon, editingPrice, setEditingPrice, setAddon, isCompleted }) {
+  const st    = item[addon];
+  const col   = PILL_COLOR[addon];
+  const label = PILL_LABEL[addon];
+  const isEd  = editingPrice?.idx === idx && editingPrice?.addon === addon;
+  const base  = { display:"inline-flex", alignItems:"center", borderRadius:20, fontSize:11, fontWeight:600, userSelect:"none" };
+
+  if (!st.on) {
+    if (isCompleted) return null;
+    return (
+      <span onClick={() => setAddon(idx, addon, { on: true })}
+        style={{...base, padding:"3px 11px", background:"#f8fafc", color:"#94a3b8",
+          border:"1px dashed #d1d5db", cursor:"pointer", gap:4}}>
+        {label}
+      </span>
+    );
+  }
+  return (
+    <span style={{...base, padding:"3px 5px 3px 10px", background:col.bg, color:col.text, border:`1px solid ${col.border}`, gap:5}}>
+      <span>{label}</span>
+      <span style={{opacity:.5}}>·</span>
+      {isCompleted
+        ? <span>${formatUSD(st.priceUSD)}</span>
+        : isEd
+          ? <input type="text" inputMode="decimal" defaultValue={st.priceUSD || ""}
+              autoFocus
+              style={{width:54, border:"none", background:"transparent",
+                outline:`1px solid ${col.border}`, borderRadius:4,
+                textAlign:"right", fontSize:11, color:col.text, padding:"0 3px"}}
+              onBlur={e => { setAddon(idx, addon, { priceUSD: parseFloat(e.target.value)||0 }); setEditingPrice(null); }}
+              onKeyDown={e => { if (e.key==="Enter") e.target.blur(); if (e.key==="Escape") setEditingPrice(null); }} />
+          : <span onClick={() => setEditingPrice({ idx, addon })}
+              style={{cursor:"text", textDecoration:"underline dotted", textUnderlineOffset:2}}>
+              ${formatUSD(st.priceUSD)}
+            </span>
+      }
+      {!isCompleted && (
+        <span onClick={() => { setAddon(idx, addon, { on:false, priceUSD:0 }); setEditingPrice(null); }}
+          style={{cursor:"pointer", opacity:.45, fontSize:14, lineHeight:1, padding:"0 3px", fontWeight:300}}>×</span>
+      )}
+    </span>
   );
 }
 
@@ -322,6 +333,7 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
     if (!quote) { setLocal(null); return; }
     setLocal({
       ...quote,
+      issueDate: quote.issueDate || todayISO(),
       items: quote.items.map((it) => ({
         ...it,
         rework: { ...it.rework },
@@ -385,56 +397,7 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
     finally { setBusy(false); }
   };
 
-  // ── Addon pill 컴포넌트 ────────────────────────────────────────
-  const PILL_COLOR = {
-    rework: { bg:"#dbeafe", text:"#1d4ed8", border:"#93c5fd" },
-    icpms:  { bg:"#f3e8ff", text:"#7c3aed", border:"#c4b5fd" },
-    lpc:    { bg:"#dcfce7", text:"#15803d", border:"#86efac" },
-  };
-  const PILL_LABEL = { rework:"Rework", icpms:"ICPMS", lpc:"LPC" };
-
-  const AddonPill = ({ idx, addon }) => {
-    const item  = local.items[idx];
-    const st    = item[addon];
-    const col   = PILL_COLOR[addon];
-    const label = PILL_LABEL[addon];
-    const isEd  = editingPrice?.idx === idx && editingPrice?.addon === addon;
-    const pillBase = { display:"inline-flex", alignItems:"center", borderRadius:20, fontSize:11, fontWeight:600, userSelect:"none" };
-
-    if (!st.on) {
-      if (isCompleted) return null;
-      return (
-        <span onClick={() => setAddon(idx, addon, { on: true })}
-          style={{...pillBase, padding:"3px 11px", background:"#f8fafc", color:"#94a3b8",
-            border:"1px dashed #d1d5db", cursor:"pointer", gap:4}}>
-          {label}
-        </span>
-      );
-    }
-    return (
-      <span style={{...pillBase, padding:"3px 5px 3px 10px", background:col.bg, color:col.text, border:`1px solid ${col.border}`, gap:5}}>
-        <span>{label}</span>
-        <span style={{opacity:.5}}>·</span>
-        {isCompleted
-          ? <span>${formatUSD(st.priceUSD)}</span>
-          : isEd
-            ? <input type="number" min="0" step="0.01" defaultValue={st.priceUSD} autoFocus
-                style={{width:54, border:"none", background:"transparent", outline:`1px solid ${col.border}`,
-                  borderRadius:4, textAlign:"right", fontSize:11, color:col.text, padding:"0 3px"}}
-                onBlur={e => { setAddon(idx, addon, { priceUSD: Number(e.target.value) }); setEditingPrice(null); }}
-                onKeyDown={e => { if (e.key==="Enter") e.target.blur(); if (e.key==="Escape") setEditingPrice(null); }} />
-            : <span onClick={() => setEditingPrice({ idx, addon })}
-                style={{cursor:"text", textDecoration:"underline dotted", textUnderlineOffset:2}}>
-                ${formatUSD(st.priceUSD)}
-              </span>
-        }
-        {!isCompleted && (
-          <span onClick={() => { setAddon(idx, addon, { on:false, priceUSD:0 }); setEditingPrice(null); }}
-            style={{cursor:"pointer", opacity:.45, fontSize:14, lineHeight:1, padding:"0 3px", fontWeight:300}}>×</span>
-        )}
-      </span>
-    );
-  };
+  // AddonPill은 컴포넌트 외부에 정의됨 (위 참조)
 
   return (
     <div className="card">
@@ -547,9 +510,15 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
                     </span>
                   )
                 }
-                <AddonPill idx={idx} addon="rework" />
-                <AddonPill idx={idx} addon="icpms" />
-                <AddonPill idx={idx} addon="lpc" />
+                <AddonPill key={`${idx}-rework`} item={item} idx={idx} addon="rework"
+                  editingPrice={editingPrice} setEditingPrice={setEditingPrice}
+                  setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-icpms`} item={item} idx={idx} addon="icpms"
+                  editingPrice={editingPrice} setEditingPrice={setEditingPrice}
+                  setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-lpc`} item={item} idx={idx} addon="lpc"
+                  editingPrice={editingPrice} setEditingPrice={setEditingPrice}
+                  setAddon={setAddon} isCompleted={isCompleted} />
                 {/* Remark */}
                 {!isCompleted
                   ? <input value={item.remark || ""} placeholder="비고"
@@ -1222,7 +1191,6 @@ export default function App() {
   const [quotes, setQuotes]       = useState([]);
   const [tradeDocs, setTradeDocs] = useState([]);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
-  const [parsedData, setParsedData]       = useState(null);
   const [loading, setLoading] = useState(true);
 
   const persistKits      = useCallback((v) => { setKits(v);      storeSetKits(v);      }, []);
@@ -1249,17 +1217,13 @@ export default function App() {
     setTab(TABS.QUOTE);
   };
 
-  const handleParsed = (result) => {
-    setParsedData(result);
-    if (result) setTab(TABS.DEV);
-  };
+  const handleParsed = () => {}; // unused — SmartGenerator manages state internally
 
   const activeQuote = activeQuoteId ? (quotes.find((q) => q.id === activeQuoteId) || null) : null;
   const draftQuotes = quotes.filter((q) => q.status === "DRAFT");
 
   const nav = [
     { section: "견적",    tab: TABS.SMART,      Icon: Zap,           label: "스마트 생성" },
-    { section: null,      tab: TABS.DEV,        Icon: BarChart2,     label: "개발 (검증)" },
     { section: null,      tab: TABS.QUOTE,      Icon: FileText,      label: "견적서 작성" },
     { section: null,      tab: TABS.QUOTE_MGMT, Icon: FolderOpen,    label: "견적 리스트" },
     { section: null,      tab: TABS.SUMMARY,    Icon: BarChart2,     label: "요약" },
@@ -1269,8 +1233,7 @@ export default function App() {
   ];
 
   const tabInfo = {
-    [TABS.SMART]:      { title: "스마트 생성",   sub: "고객 데이터 붙여넣기 → 자동 파싱 (케이스 1/2/3)" },
-    [TABS.DEV]:        { title: "개발 (검증)",   sub: "파싱 결과 파트별 확인 → 견적 초안 생성" },
+    [TABS.SMART]:      { title: "스마트 생성",   sub: "고객 데이터 붙여넣기 → 자동 파싱 → 견적서 생성" },
     [TABS.QUOTE]:      { title: "견적서 작성",   sub: "SYM3 제품 견적서 작성 · 스크랩/부가조건 · xlsx·PDF 출력" },
     [TABS.QUOTE_MGMT]: { title: "견적 리스트",   sub: "완료 견적서 목록 · 거래명세서 생성 · 다운로드" },
     [TABS.SUMMARY]:    { title: "요약",          sub: "전체 견적 현황 요약" },
@@ -1282,10 +1245,7 @@ export default function App() {
   const renderContent = () => {
     switch (tab) {
       case TABS.SMART:
-        return <SmartGenerator kits={kits} onParsed={handleParsed} />;
-
-      case TABS.DEV:
-        return <DevTab parsedData={parsedData} kits={kits} quotes={quotes} persistQuotes={persistQuotes} onSendToQuote={goToQuote} />;
+        return <SmartGenerator kits={kits} quotes={quotes} persistQuotes={persistQuotes} onSendToQuote={goToQuote} />;
 
       case TABS.QUOTE:
         return (
@@ -1338,17 +1298,6 @@ export default function App() {
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f8fafc"}}>
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:24,fontWeight:800,color:"#1e293b",marginBottom:8}}>SYQ</div>
-          <div style={{fontSize:13,color:"#94a3b8"}}>데이터 불러오는 중…</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div id="root">
       <div className="sidebar">
@@ -1393,8 +1342,14 @@ export default function App() {
             <div className="topbar-stat">
               완료 명세서 <strong>{tradeDocs.filter(d => d.status === "COMPLETED").length}</strong>
             </div>
-            <button className="btn btn-ghost" style={{padding:"3px 10px",fontSize:11}}
-              onClick={loadFromSheets}>↻ 새로고침</button>
+            {loading
+              ? <span style={{fontSize:11,color:"#94a3b8",display:"flex",alignItems:"center",gap:5}}>
+                  <span style={{width:8,height:8,borderRadius:"50%",background:"#94a3b8",display:"inline-block",animation:"pulse 1s infinite"}}/>
+                  불러오는 중…
+                </span>
+              : <button className="btn btn-ghost" style={{padding:"3px 10px",fontSize:11}}
+                  onClick={loadFromSheets}>↻ 새로고침</button>
+            }
           </div>
         </div>
         <div className="content">
