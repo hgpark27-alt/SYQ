@@ -393,25 +393,6 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
           </span>
         )}
         <div style={{flex:1}} />
-        {!isCompleted && (
-          <div style={{display:"flex", alignItems:"center", gap:5, flexWrap:"wrap"}}>
-            <span style={{fontSize:10, color:"#94a3b8", marginRight:2}}>전체</span>
-            {["rework","icpms","lpc"].map(a => (
-              <React.Fragment key={a}>
-                <span onClick={() => setAllAddon(a, true)}
-                  style={{padding:"2px 9px", borderRadius:20, fontSize:10, cursor:"pointer", fontWeight:600,
-                    background:PILL_COLOR[a].bg, color:PILL_COLOR[a].text, border:`1px solid ${PILL_COLOR[a].border}`}}>
-                  {PILL_LABEL[a]} ON
-                </span>
-                <span onClick={() => setAllAddon(a, false)}
-                  style={{padding:"2px 9px", borderRadius:20, fontSize:10, cursor:"pointer",
-                    background:"#f8fafc", color:"#94a3b8", border:"1px dashed #d1d5db", marginRight:4}}>
-                  OFF
-                </span>
-              </React.Fragment>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ── 메타 정보 ── */}
@@ -442,75 +423,63 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
       <div style={{display:"flex", flexDirection:"column", gap:6}}>
         {local.items.map((item, idx) => {
           const calc = calculateItem(item);
+          const hasPills = !isCompleted || item.isScrap || item.rework.on || item.icpms.on || item.lpc.on || item.remark;
           return (
             <div key={item.id} style={{
-              display:"grid",
-              gridTemplateColumns:"24px 1fr 88px auto 72px",
-              alignItems:"center", gap:10,
-              padding:"11px 14px",
+              padding:"10px 14px",
               background: item.isScrap ? "#fffbf7" : "#fff",
               border: `1px solid ${item.isScrap ? "#fcd34d" : "#e2e8f0"}`,
               borderRadius:10
             }}>
-              {/* 번호 */}
-              <div style={{color:"#cbd5e1", fontSize:11, fontWeight:700, textAlign:"center"}}>{idx+1}</div>
-
-              {/* 파트 정보 — 읽기 전용 */}
-              <div>
-                <div style={{fontSize:12, fontWeight:700, color:"#0f172a", marginBottom:2}}>
-                  {item.partNo || "—"}
+              {/* 1줄: 번호 · 파트 · 세정가 · 합계 */}
+              <div style={{display:"flex", alignItems:"center", gap:10}}>
+                <div style={{width:20, flexShrink:0, color:"#cbd5e1", fontSize:11, fontWeight:700, textAlign:"center"}}>{idx+1}</div>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontSize:12, fontWeight:700, color:"#0f172a"}}>{item.partNo || "—"}</div>
+                  <div style={{fontSize:11, color:"#64748b"}}>{item.description || "—"}<span style={{color:"#94a3b8", marginLeft:5}}>× {item.qty}</span></div>
                 </div>
-                <div style={{fontSize:11, color:"#64748b"}}>
-                  {item.description || "—"}
-                  <span style={{color:"#94a3b8", marginLeft:6}}>× {item.qty}</span>
+                <div style={{textAlign:"right", flexShrink:0}}>
+                  <div style={{fontSize:9, color:"#94a3b8", textTransform:"uppercase", letterSpacing:.4}}>세정가</div>
+                  <div style={{fontSize:12, fontWeight:600, color:"#64748b"}}>${formatUSD(item.cleaningPriceUSD)}</div>
+                </div>
+                <div style={{textAlign:"right", minWidth:64, flexShrink:0}}>
+                  <div style={{fontSize:9, color:"#94a3b8", textTransform:"uppercase", letterSpacing:.4}}>합계</div>
+                  <div style={{fontSize:14, fontWeight:700, color:"#1e293b"}}>${formatUSD(calc.totalPriceUSD)}</div>
                 </div>
               </div>
 
-              {/* 세정가 — 읽기 전용 */}
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:9, color:"#94a3b8", marginBottom:3, textTransform:"uppercase", letterSpacing:.4}}>세정가</div>
-                <div style={{fontSize:13, fontWeight:600, color:"#1e293b"}}>${formatUSD(item.cleaningPriceUSD)}</div>
-              </div>
-
-              {/* 조건 pills */}
-              <div style={{display:"flex", flexWrap:"wrap", gap:5, alignItems:"center"}}>
-                {/* SCRAP */}
-                {!isCompleted
-                  ? <span onClick={() => setItem(idx, { isScrap: !item.isScrap })}
-                      style={{display:"inline-flex", alignItems:"center", padding:"3px 11px",
-                        borderRadius:20, fontSize:11, fontWeight:600, cursor:"pointer", userSelect:"none",
-                        background: item.isScrap ? "#fef3c7" : "#f8fafc",
-                        color: item.isScrap ? "#b45309" : "#94a3b8",
-                        border: item.isScrap ? "1px solid #fcd34d" : "1px dashed #d1d5db"}}>
-                      {item.isScrap ? "SCRAP 30%" : "SCRAP"}
-                    </span>
-                  : item.isScrap && (
-                    <span style={{display:"inline-flex", padding:"3px 11px", borderRadius:20, fontSize:11,
-                      fontWeight:600, background:"#fef3c7", color:"#b45309", border:"1px solid #fcd34d"}}>
-                      SCRAP 30%
-                    </span>
-                  )
-                }
-                <AddonPill key={`${idx}-rework`} item={item} idx={idx} addon="rework" setAddon={setAddon} isCompleted={isCompleted} />
-                <AddonPill key={`${idx}-icpms`} item={item} idx={idx} addon="icpms" setAddon={setAddon} isCompleted={isCompleted} />
-                <AddonPill key={`${idx}-lpc`}   item={item} idx={idx} addon="lpc"   setAddon={setAddon} isCompleted={isCompleted} />
-                {/* Remark */}
-                {!isCompleted
-                  ? <input value={item.remark || ""} placeholder="비고"
-                      style={{fontSize:11, border:"1px solid #e2e8f0", borderRadius:6,
-                        padding:"3px 8px", width:72, color:"#64748b"}}
-                      onChange={e => setItem(idx, { remark: e.target.value })} />
-                  : item.remark
-                    ? <span style={{fontSize:11, color:"#64748b", fontStyle:"italic"}}>{item.remark}</span>
-                    : null
-                }
-              </div>
-
-              {/* 합계 */}
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:9, color:"#94a3b8", marginBottom:3, textTransform:"uppercase", letterSpacing:.4}}>합계</div>
-                <div style={{fontSize:14, fontWeight:700, color:"#1e293b"}}>${formatUSD(calc.totalPriceUSD)}</div>
-              </div>
+              {/* 2줄: 조건 pills */}
+              {hasPills && (
+                <div style={{display:"flex", flexWrap:"wrap", gap:5, alignItems:"center", marginTop:7, paddingLeft:30}}>
+                  {!isCompleted
+                    ? <span onClick={() => setItem(idx, { isScrap: !item.isScrap })}
+                        style={{display:"inline-flex", alignItems:"center", padding:"3px 10px", borderRadius:20,
+                          fontSize:11, fontWeight:600, cursor:"pointer", userSelect:"none",
+                          background: item.isScrap ? "#fef3c7" : "#f8fafc",
+                          color: item.isScrap ? "#b45309" : "#94a3b8",
+                          border: item.isScrap ? "1px solid #fcd34d" : "1px dashed #d1d5db"}}>
+                        {item.isScrap ? "SCRAP 30%" : "SCRAP"}
+                      </span>
+                    : item.isScrap && (
+                      <span style={{display:"inline-flex", padding:"3px 10px", borderRadius:20, fontSize:11,
+                        fontWeight:600, background:"#fef3c7", color:"#b45309", border:"1px solid #fcd34d"}}>
+                        SCRAP 30%
+                      </span>
+                    )
+                  }
+                  <AddonPill key={`${idx}-rework`} item={item} idx={idx} addon="rework" setAddon={setAddon} isCompleted={isCompleted} />
+                  <AddonPill key={`${idx}-icpms`}  item={item} idx={idx} addon="icpms"  setAddon={setAddon} isCompleted={isCompleted} />
+                  <AddonPill key={`${idx}-lpc`}    item={item} idx={idx} addon="lpc"    setAddon={setAddon} isCompleted={isCompleted} />
+                  {!isCompleted
+                    ? <input value={item.remark || ""} placeholder="비고"
+                        style={{fontSize:11, border:"1px solid #e2e8f0", borderRadius:6, padding:"3px 8px", width:80, color:"#64748b"}}
+                        onChange={e => setItem(idx, { remark: e.target.value })} />
+                    : item.remark
+                      ? <span style={{fontSize:11, color:"#64748b", fontStyle:"italic"}}>{item.remark}</span>
+                      : null
+                  }
+                </div>
+              )}
             </div>
           );
         })}
