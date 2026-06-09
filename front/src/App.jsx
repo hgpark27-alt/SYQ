@@ -278,28 +278,32 @@ const PILL_COLOR = {
 };
 const PILL_LABEL = { rework:"Rework", icpms:"ICPMS", lpc:"LPC" };
 
-// 가격은 0247 관리에서만 설정 — 견적서에서는 클릭으로 ON/OFF 토글만 가능
+// 가격은 0247에서만 설정 — 견적서에서는 클릭 토글만. 활성 시 라벨+가격 세로 스택으로 가로 확장 방지.
 function AddonPill({ item, idx, addon, setAddon, isCompleted }) {
   const st    = item[addon];
   const col   = PILL_COLOR[addon];
   const label = PILL_LABEL[addon];
-  const base  = { display:"inline-flex", alignItems:"center", borderRadius:20, fontSize:11, fontWeight:600, userSelect:"none", cursor: isCompleted ? "default" : "pointer" };
 
   if (!st.on) {
     if (isCompleted) return null;
     return (
       <span onClick={() => setAddon(idx, addon, { on: true })}
-        style={{...base, padding:"3px 11px", background:"#f8fafc", color:"#94a3b8", border:"1px dashed #d1d5db", gap:4}}>
+        style={{display:"inline-flex", alignItems:"center", justifyContent:"center",
+          width:52, padding:"4px 0", borderRadius:6, fontSize:10, fontWeight:600,
+          background:"#f8fafc", color:"#94a3b8", border:"1px dashed #d1d5db",
+          cursor:"pointer", userSelect:"none"}}>
         {label}
       </span>
     );
   }
   return (
     <span onClick={() => !isCompleted && setAddon(idx, addon, { on: false })}
-      style={{...base, padding:"3px 10px", background:col.bg, color:col.text, border:`1px solid ${col.border}`, gap:5}}>
-      <span>{label}</span>
-      <span style={{opacity:.5}}>·</span>
-      <span>${formatUSD(st.priceUSD)}</span>
+      style={{display:"inline-flex", flexDirection:"column", alignItems:"center",
+        width:52, padding:"3px 0", borderRadius:6,
+        background:col.bg, color:col.text, border:`1px solid ${col.border}`,
+        cursor: isCompleted ? "default" : "pointer", userSelect:"none", lineHeight:1.3}}>
+      <span style={{fontSize:10, fontWeight:700}}>{label}</span>
+      <span style={{fontSize:10, fontWeight:600}}>${formatUSD(st.priceUSD)}</span>
     </span>
   );
 }
@@ -420,66 +424,72 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
       )}
 
       {/* ── 파트 목록 ── */}
-      <div style={{display:"flex", flexDirection:"column", gap:6}}>
+      <div style={{display:"flex", flexDirection:"column", gap:4}}>
         {local.items.map((item, idx) => {
           const calc = calculateItem(item);
-          const hasPills = !isCompleted || item.isScrap || item.rework.on || item.icpms.on || item.lpc.on || item.remark;
           return (
             <div key={item.id} style={{
-              padding:"10px 14px",
+              display:"flex", alignItems:"center", gap:8,
+              padding:"8px 12px",
               background: item.isScrap ? "#fffbf7" : "#fff",
               border: `1px solid ${item.isScrap ? "#fcd34d" : "#e2e8f0"}`,
-              borderRadius:10
+              borderRadius:8
             }}>
-              {/* 1줄: 번호 · 파트 · 세정가 · 합계 */}
-              <div style={{display:"flex", alignItems:"center", gap:10}}>
-                <div style={{width:20, flexShrink:0, color:"#cbd5e1", fontSize:11, fontWeight:700, textAlign:"center"}}>{idx+1}</div>
-                <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontSize:12, fontWeight:700, color:"#0f172a"}}>{item.partNo || "—"}</div>
-                  <div style={{fontSize:11, color:"#64748b"}}>{item.description || "—"}<span style={{color:"#94a3b8", marginLeft:5}}>× {item.qty}</span></div>
-                </div>
-                <div style={{textAlign:"right", flexShrink:0}}>
-                  <div style={{fontSize:9, color:"#94a3b8", textTransform:"uppercase", letterSpacing:.4}}>세정가</div>
-                  <div style={{fontSize:12, fontWeight:600, color:"#64748b"}}>${formatUSD(item.cleaningPriceUSD)}</div>
-                </div>
-                <div style={{textAlign:"right", minWidth:64, flexShrink:0}}>
-                  <div style={{fontSize:9, color:"#94a3b8", textTransform:"uppercase", letterSpacing:.4}}>합계</div>
-                  <div style={{fontSize:14, fontWeight:700, color:"#1e293b"}}>${formatUSD(calc.totalPriceUSD)}</div>
-                </div>
+              {/* 번호 */}
+              <div style={{width:18, flexShrink:0, color:"#cbd5e1", fontSize:11, fontWeight:700, textAlign:"center"}}>{idx+1}</div>
+
+              {/* 파트 정보 */}
+              <div style={{flex:1, minWidth:0}}>
+                <div style={{fontSize:12, fontWeight:700, color:"#0f172a"}}>{item.partNo || "—"}</div>
+                <div style={{fontSize:11, color:"#64748b"}}>{item.description || "—"}<span style={{color:"#94a3b8", marginLeft:5}}>× {item.qty}</span></div>
               </div>
 
-              {/* 2줄: 조건 pills */}
-              {hasPills && (
-                <div style={{display:"flex", flexWrap:"wrap", gap:5, alignItems:"center", marginTop:7, paddingLeft:30}}>
-                  {!isCompleted
-                    ? <span onClick={() => setItem(idx, { isScrap: !item.isScrap })}
-                        style={{display:"inline-flex", alignItems:"center", padding:"3px 10px", borderRadius:20,
-                          fontSize:11, fontWeight:600, cursor:"pointer", userSelect:"none",
-                          background: item.isScrap ? "#fef3c7" : "#f8fafc",
-                          color: item.isScrap ? "#b45309" : "#94a3b8",
-                          border: item.isScrap ? "1px solid #fcd34d" : "1px dashed #d1d5db"}}>
-                        {item.isScrap ? "SCRAP 30%" : "SCRAP"}
-                      </span>
-                    : item.isScrap && (
-                      <span style={{display:"inline-flex", padding:"3px 10px", borderRadius:20, fontSize:11,
-                        fontWeight:600, background:"#fef3c7", color:"#b45309", border:"1px solid #fcd34d"}}>
-                        SCRAP 30%
-                      </span>
-                    )
-                  }
-                  <AddonPill key={`${idx}-rework`} item={item} idx={idx} addon="rework" setAddon={setAddon} isCompleted={isCompleted} />
-                  <AddonPill key={`${idx}-icpms`}  item={item} idx={idx} addon="icpms"  setAddon={setAddon} isCompleted={isCompleted} />
-                  <AddonPill key={`${idx}-lpc`}    item={item} idx={idx} addon="lpc"    setAddon={setAddon} isCompleted={isCompleted} />
-                  {!isCompleted
-                    ? <input value={item.remark || ""} placeholder="비고"
-                        style={{fontSize:11, border:"1px solid #e2e8f0", borderRadius:6, padding:"3px 8px", width:80, color:"#64748b"}}
-                        onChange={e => setItem(idx, { remark: e.target.value })} />
-                    : item.remark
-                      ? <span style={{fontSize:11, color:"#64748b", fontStyle:"italic"}}>{item.remark}</span>
-                      : null
-                  }
-                </div>
-              )}
+              {/* 세정가 */}
+              <div style={{textAlign:"right", flexShrink:0, minWidth:56}}>
+                <div style={{fontSize:9, color:"#94a3b8", textTransform:"uppercase", letterSpacing:.4}}>세정가</div>
+                <div style={{fontSize:11, fontWeight:600, color:"#94a3b8"}}>${formatUSD(item.cleaningPriceUSD)}</div>
+              </div>
+
+              {/* 조건 pills — 고정 너비 칸, 가로 확장 없음 */}
+              <div style={{display:"flex", gap:4, alignItems:"center", flexShrink:0}}>
+                {/* SCRAP */}
+                {!isCompleted
+                  ? <span onClick={() => setItem(idx, { isScrap: !item.isScrap })}
+                      style={{display:"inline-flex", alignItems:"center", justifyContent:"center",
+                        width:52, padding:"4px 0", borderRadius:6, fontSize:10, fontWeight:600,
+                        cursor:"pointer", userSelect:"none",
+                        background: item.isScrap ? "#fef3c7" : "#f8fafc",
+                        color: item.isScrap ? "#b45309" : "#94a3b8",
+                        border: item.isScrap ? "1px solid #fcd34d" : "1px dashed #d1d5db"}}>
+                      SCRAP
+                    </span>
+                  : item.isScrap && (
+                    <span style={{display:"inline-flex", alignItems:"center", justifyContent:"center",
+                      width:52, padding:"4px 0", borderRadius:6, fontSize:10, fontWeight:600,
+                      background:"#fef3c7", color:"#b45309", border:"1px solid #fcd34d"}}>
+                      SCRAP
+                    </span>
+                  )
+                }
+                <AddonPill key={`${idx}-rework`} item={item} idx={idx} addon="rework" setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-icpms`}  item={item} idx={idx} addon="icpms"  setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-lpc`}    item={item} idx={idx} addon="lpc"    setAddon={setAddon} isCompleted={isCompleted} />
+                {!isCompleted
+                  ? <input value={item.remark || ""} placeholder="비고"
+                      style={{fontSize:11, border:"1px solid #e2e8f0", borderRadius:6,
+                        padding:"3px 6px", width:60, color:"#64748b"}}
+                      onChange={e => setItem(idx, { remark: e.target.value })} />
+                  : item.remark
+                    ? <span style={{fontSize:11, color:"#64748b", fontStyle:"italic", maxWidth:60}}>{item.remark}</span>
+                    : null
+                }
+              </div>
+
+              {/* 합계 */}
+              <div style={{textAlign:"right", flexShrink:0, minWidth:60}}>
+                <div style={{fontSize:9, color:"#94a3b8", textTransform:"uppercase", letterSpacing:.4}}>합계</div>
+                <div style={{fontSize:13, fontWeight:700, color:"#1e293b"}}>${formatUSD(calc.totalPriceUSD)}</div>
+              </div>
             </div>
           );
         })}
