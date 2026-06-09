@@ -1,0 +1,7 @@
+node_modules/
+front/dist/
+front/.vite/
+data/
+*.log
+.env
+.env.*
