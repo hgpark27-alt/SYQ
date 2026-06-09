@@ -121,7 +121,7 @@ function parseCase23(lines, kitNo, kitSerial, poNumber, kits) {
       if (matched) si++;
     }
   }
-  return { kitNo, kitSerial, poNumber, caseType: 23, parts };
+  return { kitNo, kitSerial, poNumber, caseType: 23, parts, sideNozzleQty };
 }
 
 function parseSmart(text, kits = []) {
@@ -172,16 +172,24 @@ function SmartGenerator({ kits, quotes, persistQuotes, onSendToQuote }) {
 
   const handleCreate = () => {
     if (!parsed) return;
-    const { kitNo, kitSerial, poNumber, parts, kitNotFound } = parsed;
+    const { kitNo, kitSerial, poNumber, parts, kitNotFound, sideNozzleQty } = parsed;
     if (kitNotFound) { alert(`미등록 키트: ${kitNo}\n0247 관리에서 먼저 등록하세요.`); return; }
     const kit = kits.find(k => k.partNo === kitNo);
     if (!kit) { alert(`미등록 키트: ${kitNo}`); return; }
     const today = todayISO();
     const items = kit.parts.map(p => {
       const pd = parts.find(pp => pp.partNo === p.partNo);
-      if (pd?.serialNo === "*EA") return newQuoteItem({ ...p, qty: pd.qty });
-      // HUB 파트: 시리얼 "없음" → 0원 처리
-      if (pd?.serialNo === "없음") return newQuoteItem({ ...p, cleaningPriceUSD: 0, reworkPriceUSD: 0, icpmsPriceUSD: 0, lpcPriceUSD: 0 });
+      const isSideNozzle = p.isSideNozzle === true || /side\s*nozzle/i.test(p.description);
+      const isHub        = /hub/i.test(p.description);
+      // 사이드 노즐: 파싱된 수량 우선 적용
+      if (isSideNozzle) {
+        const qty = pd?.qty || sideNozzleQty || p.qty;
+        return newQuoteItem({ ...p, qty });
+      }
+      // HUB: 시리얼 없으면(없음 또는 빈값) 전 가격 0원
+      if (isHub && (!pd?.serialNo || pd?.serialNo === "없음")) {
+        return newQuoteItem({ ...p, cleaningPriceUSD: 0, reworkPriceUSD: 0, icpmsPriceUSD: 0, lpcPriceUSD: 0 });
+      }
       return newQuoteItem(p);
     });
     const smartSerialRows = parts
