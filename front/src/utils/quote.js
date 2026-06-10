@@ -30,17 +30,23 @@ export function calculateItem(item) {
   const baseUSD = item.isScrap
     ? round2(Number(item.cleaningPriceUSD || 0) * SCRAP_RATIO)
     : Number(item.cleaningPriceUSD || 0);
-  const yoUSD  = item.yoRecoating?.on  ? Number(item.yoRecoating.priceUSD  || 0) : 0;
-  const bsUSD  = item.bsRecoating?.on  ? Number(item.bsRecoating.priceUSD  || 0) : 0;
-  const lidUSD = item.lidRecoating?.on ? Number(item.lidRecoating.priceUSD || 0) : 0;
+  const yoUSD    = item.yoRecoating?.on   ? Number(item.yoRecoating.priceUSD   || 0) : 0;
+  const bsUSD    = item.bsRecoating?.on   ? Number(item.bsRecoating.priceUSD   || 0) : 0;
+  const lidUSD   = item.lidRecoating?.on  ? Number(item.lidRecoating.priceUSD  || 0) : 0;
+  const icpmsUSD = item.icpms?.on         ? Number(item.icpms.priceUSD         || 0) : 0;
+  const extraUSD = item.extraCleaning?.on ? Number(item.extraCleaning.priceUSD || 0) : 0;
 
-  const unitPriceUSD      = baseUSD;
-  const yoRecoatingTotal  = round2(yoUSD  * qty);
-  const bsRecoatingTotal  = round2(bsUSD  * qty);
-  const lidRecoatingTotal = round2(lidUSD * qty);
-  const totalPriceUSD = round2(unitPriceUSD * qty) + yoRecoatingTotal + bsRecoatingTotal + lidRecoatingTotal;
+  const unitPriceUSD        = baseUSD;
+  const yoRecoatingTotal    = round2(yoUSD    * qty);
+  const bsRecoatingTotal    = round2(bsUSD    * qty);
+  const lidRecoatingTotal   = round2(lidUSD   * qty);
+  const icpmsTotal          = round2(icpmsUSD * qty);
+  const extraCleaningTotal  = round2(extraUSD * qty);
+  const totalPriceUSD = round2(unitPriceUSD * qty)
+    + yoRecoatingTotal + bsRecoatingTotal + lidRecoatingTotal
+    + icpmsTotal + extraCleaningTotal;
 
-  return { unitPriceUSD, yoRecoatingTotal, bsRecoatingTotal, lidRecoatingTotal, totalPriceUSD };
+  return { unitPriceUSD, yoRecoatingTotal, bsRecoatingTotal, lidRecoatingTotal, icpmsTotal, extraCleaningTotal, totalPriceUSD };
 }
 
 export function calculateQuote(items) {

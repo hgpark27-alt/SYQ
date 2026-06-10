@@ -147,9 +147,11 @@ const newQuoteItem = (part = {}) => ({
   qty: Number(part.qty) || 1,
   cleaningPriceUSD: Number(part.cleaningPriceUSD) || 0,
   isScrap: false,
-  yoRecoating:  { on: false, priceUSD: Number(part.yoRecoatingPriceUSD)  || 0 },
-  bsRecoating:  { on: false, priceUSD: Number(part.bsRecoatingPriceUSD)  || 0 },
-  lidRecoating: { on: false, priceUSD: Number(part.lidRecoatingPriceUSD) || 0 },
+  yoRecoating:   { on: false, priceUSD: Number(part.yoRecoatingPriceUSD)   || 0 },
+  bsRecoating:   { on: false, priceUSD: Number(part.bsRecoatingPriceUSD)   || 0 },
+  lidRecoating:  { on: false, priceUSD: Number(part.lidRecoatingPriceUSD)  || 0 },
+  icpms:         { on: false, priceUSD: Number(part.icpmsPriceUSD)         || 0 },
+  extraCleaning: { on: false, priceUSD: Number(part.extraCleaningPriceUSD) || 0 },
 });
 
 const TABS = {
@@ -187,7 +189,7 @@ function SmartGenerator({ kits, quotes, persistQuotes, onSendToQuote }) {
       }
             // HUB: 시리얼 없으면(없음 또는 빈값) 전 가격 0원
       if (isHub && (!pd?.serialNo || pd?.serialNo === "없음")) {
-        return newQuoteItem({ ...p, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0 });
+        return newQuoteItem({ ...p, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, icpmsPriceUSD: 0, extraCleaningPriceUSD: 0 });
       }
       return newQuoteItem(p);
     });
@@ -285,11 +287,19 @@ function SmartGenerator({ kits, quotes, persistQuotes, onSendToQuote }) {
 
 // ─── AddonPill (컴포넌트 외부에 정의 — 내부 정의 시 렌더마다 언마운트/리마운트) ─────────
 const PILL_COLOR = {
-  yoRecoating:  { bg:"#dbeafe", text:"#1d4ed8", border:"#93c5fd" },
-  bsRecoating:  { bg:"#f3e8ff", text:"#7c3aed", border:"#c4b5fd" },
-  lidRecoating: { bg:"#dcfce7", text:"#15803d", border:"#86efac" },
+  yoRecoating:   { bg:"#dbeafe", text:"#1d4ed8", border:"#93c5fd" },
+  bsRecoating:   { bg:"#f3e8ff", text:"#7c3aed", border:"#c4b5fd" },
+  lidRecoating:  { bg:"#dcfce7", text:"#15803d", border:"#86efac" },
+  icpms:         { bg:"#fff7ed", text:"#c2410c", border:"#fdba74" },
+  extraCleaning: { bg:"#f0fdfa", text:"#0f766e", border:"#5eead4" },
 };
-const PILL_LABEL = { yoRecoating:"YO-RC", bsRecoating:"BS-RC", lidRecoating:"LID" };
+const PILL_LABEL = {
+  yoRecoating:   "YO-RC",
+  bsRecoating:   "BS-RC",
+  lidRecoating:  "LID",
+  icpms:         "분석",
+  extraCleaning: "추가세정",
+};
 
 // 가격은 0247에서만 설정 — 견적서에서는 클릭 토글만. 활성 시 라벨+가격 세로 스택으로 가로 확장 방지.
 function AddonPill({ item, idx, addon, setAddon, isCompleted }) {
@@ -334,9 +344,11 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
       issueDate: quote.issueDate || todayISO(),
       items: quote.items.map((it) => ({
         ...it,
-        yoRecoating:  { on: false, priceUSD: 0, ...it.yoRecoating  },
-        bsRecoating:  { on: false, priceUSD: 0, ...it.bsRecoating  },
-        lidRecoating: { on: false, priceUSD: 0, ...it.lidRecoating },
+        yoRecoating:   { on: false, priceUSD: 0, ...it.yoRecoating   },
+        bsRecoating:   { on: false, priceUSD: 0, ...it.bsRecoating   },
+        lidRecoating:  { on: false, priceUSD: 0, ...it.lidRecoating  },
+        icpms:         { on: false, priceUSD: 0, ...it.icpms         },
+        extraCleaning: { on: false, priceUSD: 0, ...it.extraCleaning },
       }))
     });
   }, [quote?.id]);
@@ -484,9 +496,11 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
                     </span>
                   )
                 }
-                <AddonPill key={`${idx}-yo`}  item={item} idx={idx} addon="yoRecoating"  setAddon={setAddon} isCompleted={isCompleted} />
-                <AddonPill key={`${idx}-bs`}  item={item} idx={idx} addon="bsRecoating"  setAddon={setAddon} isCompleted={isCompleted} />
-                <AddonPill key={`${idx}-lid`} item={item} idx={idx} addon="lidRecoating" setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-yo`}    item={item} idx={idx} addon="yoRecoating"   setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-bs`}    item={item} idx={idx} addon="bsRecoating"   setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-lid`}   item={item} idx={idx} addon="lidRecoating"  setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-icpms`} item={item} idx={idx} addon="icpms"         setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-extra`} item={item} idx={idx} addon="extraCleaning" setAddon={setAddon} isCompleted={isCompleted} />
               </div>
 
               {/* 합계 */}
@@ -983,7 +997,7 @@ function KitManager({ kits, persistKits }) {
   const [kitForm, setKitForm] = useState({ partNo: "", name: "" });
   const [partForm, setPartForm] = useState({
     partNo: "", description: "", qty: 1, isSideNozzle: false,
-    cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0
+    cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, icpmsPriceUSD: 0, extraCleaningPriceUSD: 0
   });
 
   const openNew  = () => { setKitForm({ partNo: "", name: "" }); setEditKit({ id: uid(), parts: [] }); };
@@ -1001,7 +1015,7 @@ function KitManager({ kits, persistKits }) {
   const delKit    = (id) => { if (confirm("삭제?")) persistKits(kits.filter((k) => k.id !== id)); };
   const toggleDis = (id) => persistKits(kits.map((k) => k.id === id ? { ...k, disabled: !k.disabled } : k));
 
-  const emptyPart = () => ({ id: uid(), partNo: "", description: "", qty: 1, isSideNozzle: false, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0 });
+  const emptyPart = () => ({ id: uid(), partNo: "", description: "", qty: 1, isSideNozzle: false, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, icpmsPriceUSD: 0, extraCleaningPriceUSD: 0 });
 
   const applyColumnPaste = (startIdx, key, rawText) => {
     const lines = String(rawText || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
@@ -1012,7 +1026,7 @@ function KitManager({ kits, persistKits }) {
       lines.forEach((line, offset) => {
         const i = startIdx + offset;
         if (key === "qty") parts[i] = { ...parts[i], qty: Math.max(1, Number(line) || 1) };
-        else if (["cleaningPriceUSD","yoRecoatingPriceUSD","bsRecoatingPriceUSD","lidRecoatingPriceUSD"].includes(key))
+        else if (["cleaningPriceUSD","yoRecoatingPriceUSD","bsRecoatingPriceUSD","lidRecoatingPriceUSD","icpmsPriceUSD","extraCleaningPriceUSD"].includes(key))
           parts[i] = { ...parts[i], [key]: Number(line) || 0 };
         else parts[i] = { ...parts[i], [key]: line };
       });
@@ -1028,7 +1042,7 @@ function KitManager({ kits, persistKits }) {
   const addPart = () => {
     if (!partForm.partNo.trim()) { alert("Part No를 입력하세요"); return; }
     setEditKit((p) => ({ ...p, parts: [...p.parts, { id: uid(), ...partForm }] }));
-    setPartForm({ partNo: "", description: "", qty: 1, isSideNozzle: false, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0 });
+    setPartForm({ partNo: "", description: "", qty: 1, isSideNozzle: false, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, icpmsPriceUSD: 0, extraCleaningPriceUSD: 0 });
   };
 
   const removePart = (idx) => setEditKit((p) => ({ ...p, parts: p.parts.filter((_, i) => i !== idx) }));
@@ -1062,7 +1076,7 @@ function KitManager({ kits, persistKits }) {
           <thead>
             <tr>
               <th>Part No</th><th>Description</th><th>Qty</th><th>Side Nozzle</th>
-              <th>세정가(USD)</th><th>YO Recoat($)</th><th>BS Recoat($)</th><th>LID Recoat($)</th><th></th>
+              <th>세정가(USD)</th><th>YO Recoat($)</th><th>BS Recoat($)</th><th>LID Recoat($)</th><th>분석($)</th><th>추가세정($)</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -1074,10 +1088,12 @@ function KitManager({ kits, persistKits }) {
                 <td className="td-center">
                   <input type="checkbox" checked={!!pt.isSideNozzle} onChange={(e) => updatePart(idx, { isSideNozzle: e.target.checked })} title="Side Nozzle 파트 지정" />
                 </td>
-                <td><input type="number" min="0" step="0.01" value={pt.cleaningPriceUSD}       style={{width:80}} onChange={(e) => updatePart(idx, { cleaningPriceUSD:       Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "cleaningPriceUSD")} /></td>
-                <td><input type="number" min="0" step="0.01" value={pt.yoRecoatingPriceUSD  ?? 0} style={{width:80}} onChange={(e) => updatePart(idx, { yoRecoatingPriceUSD:  Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "yoRecoatingPriceUSD")} /></td>
-                <td><input type="number" min="0" step="0.01" value={pt.bsRecoatingPriceUSD  ?? 0} style={{width:80}} onChange={(e) => updatePart(idx, { bsRecoatingPriceUSD:  Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "bsRecoatingPriceUSD")} /></td>
-                <td><input type="number" min="0" step="0.01" value={pt.lidRecoatingPriceUSD ?? 0} style={{width:80}} onChange={(e) => updatePart(idx, { lidRecoatingPriceUSD: Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "lidRecoatingPriceUSD")} /></td>
+                <td><input type="number" min="0" step="0.01" value={pt.cleaningPriceUSD        ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { cleaningPriceUSD:       Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "cleaningPriceUSD")} /></td>
+                <td><input type="number" min="0" step="0.01" value={pt.yoRecoatingPriceUSD    ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { yoRecoatingPriceUSD:  Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "yoRecoatingPriceUSD")} /></td>
+                <td><input type="number" min="0" step="0.01" value={pt.bsRecoatingPriceUSD    ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { bsRecoatingPriceUSD:  Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "bsRecoatingPriceUSD")} /></td>
+                <td><input type="number" min="0" step="0.01" value={pt.lidRecoatingPriceUSD   ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { lidRecoatingPriceUSD: Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "lidRecoatingPriceUSD")} /></td>
+                <td><input type="number" min="0" step="0.01" value={pt.icpmsPriceUSD          ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { icpmsPriceUSD:         Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "icpmsPriceUSD")} /></td>
+                <td><input type="number" min="0" step="0.01" value={pt.extraCleaningPriceUSD  ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { extraCleaningPriceUSD: Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "extraCleaningPriceUSD")} /></td>
                 <td><button className="btn btn-danger" style={{padding:"3px 8px",fontSize:11}} onClick={() => removePart(idx)}>✕</button></td>
               </tr>
             ))}
@@ -1088,10 +1104,12 @@ function KitManager({ kits, persistKits }) {
               <td className="td-center">
                 <input type="checkbox" checked={!!partForm.isSideNozzle} onChange={(e) => setPartForm((p) => ({ ...p, isSideNozzle: e.target.checked }))} title="Side Nozzle 파트 지정" />
               </td>
-              <td><input type="number" min="0" step="0.01" value={partForm.cleaningPriceUSD}      style={{width:80}} onChange={(e) => setPartForm((p) => ({ ...p, cleaningPriceUSD:       Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "cleaningPriceUSD")} /></td>
-              <td><input type="number" min="0" step="0.01" value={partForm.yoRecoatingPriceUSD}  style={{width:80}} onChange={(e) => setPartForm((p) => ({ ...p, yoRecoatingPriceUSD:  Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "yoRecoatingPriceUSD")} /></td>
-              <td><input type="number" min="0" step="0.01" value={partForm.bsRecoatingPriceUSD}  style={{width:80}} onChange={(e) => setPartForm((p) => ({ ...p, bsRecoatingPriceUSD:  Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "bsRecoatingPriceUSD")} /></td>
-              <td><input type="number" min="0" step="0.01" value={partForm.lidRecoatingPriceUSD} style={{width:80}} onChange={(e) => setPartForm((p) => ({ ...p, lidRecoatingPriceUSD: Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "lidRecoatingPriceUSD")} /></td>
+              <td><input type="number" min="0" step="0.01" value={partForm.cleaningPriceUSD}       style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, cleaningPriceUSD:       Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "cleaningPriceUSD")} /></td>
+              <td><input type="number" min="0" step="0.01" value={partForm.yoRecoatingPriceUSD}   style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, yoRecoatingPriceUSD:  Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "yoRecoatingPriceUSD")} /></td>
+              <td><input type="number" min="0" step="0.01" value={partForm.bsRecoatingPriceUSD}   style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, bsRecoatingPriceUSD:  Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "bsRecoatingPriceUSD")} /></td>
+              <td><input type="number" min="0" step="0.01" value={partForm.lidRecoatingPriceUSD}  style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, lidRecoatingPriceUSD: Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "lidRecoatingPriceUSD")} /></td>
+              <td><input type="number" min="0" step="0.01" value={partForm.icpmsPriceUSD}         style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, icpmsPriceUSD:         Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "icpmsPriceUSD")} /></td>
+              <td><input type="number" min="0" step="0.01" value={partForm.extraCleaningPriceUSD} style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, extraCleaningPriceUSD: Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "extraCleaningPriceUSD")} /></td>
               <td><button className="btn btn-success" style={{padding:"3px 10px",fontSize:11}} onClick={addPart}>+ 추가</button></td>
             </tr>
           </tbody>
