@@ -7,11 +7,12 @@ export function bootstrapData() {}  // 구 로컬 서버 방식 호환용 (no-op
 // ── 전체 pull (앱 로드 시) ────────────────────────────────────────
 
 export const pullFromSheets = async () => {
-  const { kits, quotes, tradeDocs, config } = await gs.pullAll();
+  const { kits, quotes, tradeDocs, config, addSettings } = await gs.pullAll();
   return {
     kits,
     quotes,
     tradeDocs,
+    addSettings,
     settings: config.settings  ?? { defaultExchangeRate: 1400, quoteAuthor: "SY Kim" },
     quoteSeqMap: config.quoteSeqMap ?? {}
   };

@@ -121,14 +121,34 @@ export const saveConfigKey = async (key, value) => {
   await sheetWrite("CONFIG", existing);
 };
 
+// ── ADD (환경설정) ────────────────────────────────────────────────
+
+export const getAddSettingsFromSheet = async () => {
+  try {
+    const rows = await sheetGet("ADD");
+    const out = {};
+    rows.filter(r => r[0]).forEach(r => { out[String(r[0])] = safeJson(r[1], r[1]); });
+    return out;
+  } catch { return {}; }
+};
+
+export const saveAddSettingsToSheet = async (settings) => {
+  const values = [
+    ["key", "value"],
+    ...Object.entries(settings).map(([k, v]) => [k, String(v)])
+  ];
+  await sheetWrite("ADD", values);
+};
+
 // ── 전체 pull ────────────────────────────────────────────────────
 
 export const pullAll = async () => {
-  const [kits, quotes, tradeDocs, config] = await Promise.all([
+  const [kits, quotes, tradeDocs, config, addSettings] = await Promise.all([
     getKitsFromSheet(),
     getQuotesFromSheet(),
     getTradeDocsFromSheet(),
-    getConfigFromSheet()
+    getConfigFromSheet(),
+    getAddSettingsFromSheet()
   ]);
-  return { kits, quotes, tradeDocs, config };
+  return { kits, quotes, tradeDocs, config, addSettings };
 };

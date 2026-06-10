@@ -9,6 +9,7 @@ import {
   setTradeDocs as storeSetTradeDocs,
   pullFromSheets
 } from "./utils/storage";
+import { saveAddSettingsToSheet } from "./utils/gsheets";
 import {
   calculateItem, calculateQuote,
   formatUSD,
@@ -140,18 +141,20 @@ function parseSmart(text, kits = []) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-const newQuoteItem = (part = {}) => ({
+// sys = { icpmsPrice, lpcPrice } — 시스템 고정가 (ADD 시트)
+const newQuoteItem = (part = {}, sys = {}) => ({
   id: uid(),
   partNo: part.partNo || "",
   description: part.description || "",
   qty: Number(part.qty) || 1,
   cleaningPriceUSD: Number(part.cleaningPriceUSD) || 0,
   isScrap: false,
-  yoRecoating:   { on: false, priceUSD: Number(part.yoRecoatingPriceUSD)   || 0 },
-  bsRecoating:   { on: false, priceUSD: Number(part.bsRecoatingPriceUSD)   || 0 },
-  lidRecoating:  { on: false, priceUSD: Number(part.lidRecoatingPriceUSD)  || 0 },
-  icpms:         { on: false, priceUSD: Number(part.icpmsPriceUSD)         || 0 },
-  extraCleaning: { on: false, priceUSD: Number(part.extraCleaningPriceUSD) || 0 },
+  yoRecoating:   { on: false,              priceUSD: Number(part.yoRecoatingPriceUSD)   || 0 },
+  bsRecoating:   { on: false,              priceUSD: Number(part.bsRecoatingPriceUSD)   || 0 },
+  lidRecoating:  { on: false,              priceUSD: Number(part.lidRecoatingPriceUSD)  || 0 },
+  extraCleaning: { on: false,              priceUSD: Number(part.extraCleaningPriceUSD) || 0 },
+  icpms:         { on: !!part.usesICPMS,   priceUSD: Number(sys.icpmsPrice) || 261 },
+  lpc:           { on: !!part.usesLPC,     priceUSD: Number(sys.lpcPrice)   || 225 },
 });
 
 const TABS = {
@@ -165,7 +168,7 @@ const TABS = {
 };
 
 // ─── SmartGenerator (파싱 + 인라인 리뷰 + 견적서 생성) ───────────────────────
-function SmartGenerator({ kits, quotes, persistQuotes, onSendToQuote }) {
+function SmartGenerator({ kits, quotes, persistQuotes, onSendToQuote, settings }) {
   const [text, setText]   = useState("");
   const [parsed, setParsed] = useState(null);
 
@@ -185,13 +188,13 @@ function SmartGenerator({ kits, quotes, persistQuotes, onSendToQuote }) {
       // 사이드 노즐: 파싱된 수량 우선 적용
       if (isSideNozzle) {
         const qty = pd?.qty || sideNozzleQty || p.qty;
-        return newQuoteItem({ ...p, qty });
+        return newQuoteItem({ ...p, qty }, settings);
       }
             // HUB: 시리얼 없으면(없음 또는 빈값) 전 가격 0원
       if (isHub && (!pd?.serialNo || pd?.serialNo === "없음")) {
-        return newQuoteItem({ ...p, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, icpmsPriceUSD: 0, extraCleaningPriceUSD: 0 });
+        return newQuoteItem({ ...p, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, extraCleaningPriceUSD: 0, usesICPMS: false, usesLPC: false }, settings);
       }
-      return newQuoteItem(p);
+      return newQuoteItem(p, settings);
     });
     const smartSerialRows = parts
       .filter(p => p.serialNo !== "*EA")
@@ -290,15 +293,17 @@ const PILL_COLOR = {
   yoRecoating:   { bg:"#dbeafe", text:"#1d4ed8", border:"#93c5fd" },
   bsRecoating:   { bg:"#f3e8ff", text:"#7c3aed", border:"#c4b5fd" },
   lidRecoating:  { bg:"#dcfce7", text:"#15803d", border:"#86efac" },
-  icpms:         { bg:"#fff7ed", text:"#c2410c", border:"#fdba74" },
   extraCleaning: { bg:"#f0fdfa", text:"#0f766e", border:"#5eead4" },
+  icpms:         { bg:"#fff7ed", text:"#c2410c", border:"#fdba74" },
+  lpc:           { bg:"#fdf4ff", text:"#9333ea", border:"#e879f9" },
 };
 const PILL_LABEL = {
   yoRecoating:   "YO-RC",
   bsRecoating:   "BS-RC",
   lidRecoating:  "LID",
-  icpms:         "분석",
   extraCleaning: "추가세정",
+  icpms:         "ICPMS",
+  lpc:           "LPC",
 };
 
 // 가격은 0247에서만 설정 — 견적서에서는 클릭 토글만. 활성 시 라벨+가격 세로 스택으로 가로 확장 방지.
@@ -347,8 +352,9 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
         yoRecoating:   { on: false, priceUSD: 0, ...it.yoRecoating   },
         bsRecoating:   { on: false, priceUSD: 0, ...it.bsRecoating   },
         lidRecoating:  { on: false, priceUSD: 0, ...it.lidRecoating  },
-        icpms:         { on: false, priceUSD: 0, ...it.icpms         },
         extraCleaning: { on: false, priceUSD: 0, ...it.extraCleaning },
+        icpms:         { on: false, priceUSD: 0, ...it.icpms         },
+        lpc:           { on: false, priceUSD: 0, ...it.lpc           },
       }))
     });
   }, [quote?.id]);
@@ -499,8 +505,9 @@ function QuoteBuilder({ quote, kits, quotes, persistQuotes, onComplete }) {
                 <AddonPill key={`${idx}-yo`}    item={item} idx={idx} addon="yoRecoating"   setAddon={setAddon} isCompleted={isCompleted} />
                 <AddonPill key={`${idx}-bs`}    item={item} idx={idx} addon="bsRecoating"   setAddon={setAddon} isCompleted={isCompleted} />
                 <AddonPill key={`${idx}-lid`}   item={item} idx={idx} addon="lidRecoating"  setAddon={setAddon} isCompleted={isCompleted} />
-                <AddonPill key={`${idx}-icpms`} item={item} idx={idx} addon="icpms"         setAddon={setAddon} isCompleted={isCompleted} />
                 <AddonPill key={`${idx}-extra`} item={item} idx={idx} addon="extraCleaning" setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-icpms`} item={item} idx={idx} addon="icpms"         setAddon={setAddon} isCompleted={isCompleted} />
+                <AddonPill key={`${idx}-lpc`}   item={item} idx={idx} addon="lpc"           setAddon={setAddon} isCompleted={isCompleted} />
               </div>
 
               {/* 합계 */}
@@ -997,7 +1004,8 @@ function KitManager({ kits, persistKits }) {
   const [kitForm, setKitForm] = useState({ partNo: "", name: "" });
   const [partForm, setPartForm] = useState({
     partNo: "", description: "", qty: 1, isSideNozzle: false,
-    cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, icpmsPriceUSD: 0, extraCleaningPriceUSD: 0
+    cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, extraCleaningPriceUSD: 0,
+    usesICPMS: false, usesLPC: false
   });
 
   const openNew  = () => { setKitForm({ partNo: "", name: "" }); setEditKit({ id: uid(), parts: [] }); };
@@ -1015,7 +1023,7 @@ function KitManager({ kits, persistKits }) {
   const delKit    = (id) => { if (confirm("삭제?")) persistKits(kits.filter((k) => k.id !== id)); };
   const toggleDis = (id) => persistKits(kits.map((k) => k.id === id ? { ...k, disabled: !k.disabled } : k));
 
-  const emptyPart = () => ({ id: uid(), partNo: "", description: "", qty: 1, isSideNozzle: false, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, icpmsPriceUSD: 0, extraCleaningPriceUSD: 0 });
+  const emptyPart = () => ({ id: uid(), partNo: "", description: "", qty: 1, isSideNozzle: false, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, extraCleaningPriceUSD: 0, usesICPMS: false, usesLPC: false });
 
   const applyColumnPaste = (startIdx, key, rawText) => {
     const lines = String(rawText || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
@@ -1026,7 +1034,7 @@ function KitManager({ kits, persistKits }) {
       lines.forEach((line, offset) => {
         const i = startIdx + offset;
         if (key === "qty") parts[i] = { ...parts[i], qty: Math.max(1, Number(line) || 1) };
-        else if (["cleaningPriceUSD","yoRecoatingPriceUSD","bsRecoatingPriceUSD","lidRecoatingPriceUSD","icpmsPriceUSD","extraCleaningPriceUSD"].includes(key))
+        else if (["cleaningPriceUSD","yoRecoatingPriceUSD","bsRecoatingPriceUSD","lidRecoatingPriceUSD","extraCleaningPriceUSD"].includes(key))
           parts[i] = { ...parts[i], [key]: Number(line) || 0 };
         else parts[i] = { ...parts[i], [key]: line };
       });
@@ -1042,7 +1050,7 @@ function KitManager({ kits, persistKits }) {
   const addPart = () => {
     if (!partForm.partNo.trim()) { alert("Part No를 입력하세요"); return; }
     setEditKit((p) => ({ ...p, parts: [...p.parts, { id: uid(), ...partForm }] }));
-    setPartForm({ partNo: "", description: "", qty: 1, isSideNozzle: false, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, icpmsPriceUSD: 0, extraCleaningPriceUSD: 0 });
+    setPartForm({ partNo: "", description: "", qty: 1, isSideNozzle: false, cleaningPriceUSD: 0, yoRecoatingPriceUSD: 0, bsRecoatingPriceUSD: 0, lidRecoatingPriceUSD: 0, extraCleaningPriceUSD: 0, usesICPMS: false, usesLPC: false });
   };
 
   const removePart = (idx) => setEditKit((p) => ({ ...p, parts: p.parts.filter((_, i) => i !== idx) }));
@@ -1075,8 +1083,9 @@ function KitManager({ kits, persistKits }) {
         <table className="items-table">
           <thead>
             <tr>
-              <th>Part No</th><th>Description</th><th>Qty</th><th>Side Nozzle</th>
-              <th>세정가(USD)</th><th>YO Recoat($)</th><th>BS Recoat($)</th><th>LID Recoat($)</th><th>분석($)</th><th>추가세정($)</th><th></th>
+              <th>Part No</th><th>Description</th><th>Qty</th><th>Side</th>
+              <th>세정가($)</th><th>YO-RC($)</th><th>BS-RC($)</th><th>LID($)</th><th>추가세정($)</th>
+              <th title="ICPMS Analysis 적용">ICPMS</th><th title="LPC Analysis 적용">LPC</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -1088,12 +1097,13 @@ function KitManager({ kits, persistKits }) {
                 <td className="td-center">
                   <input type="checkbox" checked={!!pt.isSideNozzle} onChange={(e) => updatePart(idx, { isSideNozzle: e.target.checked })} title="Side Nozzle 파트 지정" />
                 </td>
-                <td><input type="number" min="0" step="0.01" value={pt.cleaningPriceUSD        ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { cleaningPriceUSD:       Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "cleaningPriceUSD")} /></td>
-                <td><input type="number" min="0" step="0.01" value={pt.yoRecoatingPriceUSD    ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { yoRecoatingPriceUSD:  Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "yoRecoatingPriceUSD")} /></td>
-                <td><input type="number" min="0" step="0.01" value={pt.bsRecoatingPriceUSD    ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { bsRecoatingPriceUSD:  Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "bsRecoatingPriceUSD")} /></td>
-                <td><input type="number" min="0" step="0.01" value={pt.lidRecoatingPriceUSD   ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { lidRecoatingPriceUSD: Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "lidRecoatingPriceUSD")} /></td>
-                <td><input type="number" min="0" step="0.01" value={pt.icpmsPriceUSD          ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { icpmsPriceUSD:         Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "icpmsPriceUSD")} /></td>
-                <td><input type="number" min="0" step="0.01" value={pt.extraCleaningPriceUSD  ?? 0} style={{width:72}} onChange={(e) => updatePart(idx, { extraCleaningPriceUSD: Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "extraCleaningPriceUSD")} /></td>
+                <td><input type="number" min="0" step="0.01" value={pt.cleaningPriceUSD       ?? 0} style={{width:68}} onChange={(e) => updatePart(idx, { cleaningPriceUSD:       Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "cleaningPriceUSD")} /></td>
+                <td><input type="number" min="0" step="0.01" value={pt.yoRecoatingPriceUSD   ?? 0} style={{width:68}} onChange={(e) => updatePart(idx, { yoRecoatingPriceUSD:  Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "yoRecoatingPriceUSD")} /></td>
+                <td><input type="number" min="0" step="0.01" value={pt.bsRecoatingPriceUSD   ?? 0} style={{width:68}} onChange={(e) => updatePart(idx, { bsRecoatingPriceUSD:  Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "bsRecoatingPriceUSD")} /></td>
+                <td><input type="number" min="0" step="0.01" value={pt.lidRecoatingPriceUSD  ?? 0} style={{width:68}} onChange={(e) => updatePart(idx, { lidRecoatingPriceUSD: Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "lidRecoatingPriceUSD")} /></td>
+                <td><input type="number" min="0" step="0.01" value={pt.extraCleaningPriceUSD ?? 0} style={{width:68}} onChange={(e) => updatePart(idx, { extraCleaningPriceUSD: Number(e.target.value) })} onPaste={(e) => onPasteColumn(e, idx, "extraCleaningPriceUSD")} /></td>
+                <td className="td-center"><input type="checkbox" checked={!!pt.usesICPMS} onChange={(e) => updatePart(idx, { usesICPMS: e.target.checked })} title="ICPMS Analysis 적용" /></td>
+                <td className="td-center"><input type="checkbox" checked={!!pt.usesLPC}   onChange={(e) => updatePart(idx, { usesLPC:   e.target.checked })} title="LPC Analysis 적용" /></td>
                 <td><button className="btn btn-danger" style={{padding:"3px 8px",fontSize:11}} onClick={() => removePart(idx)}>✕</button></td>
               </tr>
             ))}
@@ -1104,12 +1114,13 @@ function KitManager({ kits, persistKits }) {
               <td className="td-center">
                 <input type="checkbox" checked={!!partForm.isSideNozzle} onChange={(e) => setPartForm((p) => ({ ...p, isSideNozzle: e.target.checked }))} title="Side Nozzle 파트 지정" />
               </td>
-              <td><input type="number" min="0" step="0.01" value={partForm.cleaningPriceUSD}       style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, cleaningPriceUSD:       Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "cleaningPriceUSD")} /></td>
-              <td><input type="number" min="0" step="0.01" value={partForm.yoRecoatingPriceUSD}   style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, yoRecoatingPriceUSD:  Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "yoRecoatingPriceUSD")} /></td>
-              <td><input type="number" min="0" step="0.01" value={partForm.bsRecoatingPriceUSD}   style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, bsRecoatingPriceUSD:  Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "bsRecoatingPriceUSD")} /></td>
-              <td><input type="number" min="0" step="0.01" value={partForm.lidRecoatingPriceUSD}  style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, lidRecoatingPriceUSD: Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "lidRecoatingPriceUSD")} /></td>
-              <td><input type="number" min="0" step="0.01" value={partForm.icpmsPriceUSD}         style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, icpmsPriceUSD:         Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "icpmsPriceUSD")} /></td>
-              <td><input type="number" min="0" step="0.01" value={partForm.extraCleaningPriceUSD} style={{width:72}} onChange={(e) => setPartForm((p) => ({ ...p, extraCleaningPriceUSD: Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "extraCleaningPriceUSD")} /></td>
+              <td><input type="number" min="0" step="0.01" value={partForm.cleaningPriceUSD}      style={{width:68}} onChange={(e) => setPartForm((p) => ({ ...p, cleaningPriceUSD:       Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "cleaningPriceUSD")} /></td>
+              <td><input type="number" min="0" step="0.01" value={partForm.yoRecoatingPriceUSD}  style={{width:68}} onChange={(e) => setPartForm((p) => ({ ...p, yoRecoatingPriceUSD:  Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "yoRecoatingPriceUSD")} /></td>
+              <td><input type="number" min="0" step="0.01" value={partForm.bsRecoatingPriceUSD}  style={{width:68}} onChange={(e) => setPartForm((p) => ({ ...p, bsRecoatingPriceUSD:  Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "bsRecoatingPriceUSD")} /></td>
+              <td><input type="number" min="0" step="0.01" value={partForm.lidRecoatingPriceUSD} style={{width:68}} onChange={(e) => setPartForm((p) => ({ ...p, lidRecoatingPriceUSD: Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "lidRecoatingPriceUSD")} /></td>
+              <td><input type="number" min="0" step="0.01" value={partForm.extraCleaningPriceUSD} style={{width:68}} onChange={(e) => setPartForm((p) => ({ ...p, extraCleaningPriceUSD: Number(e.target.value) }))} onPaste={(e) => onPasteColumn(e, editKit.parts.length, "extraCleaningPriceUSD")} /></td>
+              <td className="td-center"><input type="checkbox" checked={!!partForm.usesICPMS} onChange={(e) => setPartForm((p) => ({ ...p, usesICPMS: e.target.checked }))} title="ICPMS Analysis" /></td>
+              <td className="td-center"><input type="checkbox" checked={!!partForm.usesLPC}   onChange={(e) => setPartForm((p) => ({ ...p, usesLPC:   e.target.checked }))} title="LPC Analysis" /></td>
               <td><button className="btn btn-success" style={{padding:"3px 10px",fontSize:11}} onClick={addPart}>+ 추가</button></td>
             </tr>
           </tbody>
@@ -1162,6 +1173,8 @@ function KitManager({ kits, persistKits }) {
 }
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
+const DEFAULT_SETTINGS = { exchangeRate: 1350, icpmsPrice: 261, lpcPrice: 225 };
+
 export default function App() {
   const [tab, setTab]             = useState(TABS.SMART);
   const [kits, setKits]           = useState([]);
@@ -1169,17 +1182,35 @@ export default function App() {
   const [tradeDocs, setTradeDocs] = useState([]);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings]   = useState(DEFAULT_SETTINGS);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsForm, setSettingsForm] = useState(DEFAULT_SETTINGS);
+  const [settingsSaving, setSettingsSaving] = useState(false);
 
   const persistKits      = useCallback((v) => { setKits(v);      storeSetKits(v);      }, []);
   const persistQuotes    = useCallback((v) => { setQuotes(v);    storeSetQuotes(v);    }, []);
   const persistTradeDocs = useCallback((v) => { setTradeDocs(v); storeSetTradeDocs(v); }, []);
 
+  const saveSettings = async () => {
+    setSettingsSaving(true);
+    try {
+      await saveAddSettingsToSheet(settingsForm);
+      setSettings(settingsForm);
+    } catch (e) { alert("설정 저장 실패: " + e.message); }
+    finally { setSettingsSaving(false); }
+  };
+
   const loadFromSheets = useCallback(async () => {
     setLoading(true);
     try {
-      const { kits: k, quotes: q, tradeDocs: t, quoteSeqMap } = await pullFromSheets();
+      const { kits: k, quotes: q, tradeDocs: t, quoteSeqMap, addSettings } = await pullFromSheets();
       setKits(k); setQuotes(q); setTradeDocs(t);
       if (quoteSeqMap) window.__syqSeqMap = quoteSeqMap;
+      if (addSettings && Object.keys(addSettings).length > 0) {
+        const merged = { ...DEFAULT_SETTINGS, ...addSettings };
+        setSettings(merged);
+        setSettingsForm(merged);
+      }
     } catch (e) {
       alert("데이터 로드 실패: " + e.message);
     } finally {
@@ -1222,7 +1253,7 @@ export default function App() {
   const renderContent = () => {
     switch (tab) {
       case TABS.SMART:
-        return <SmartGenerator kits={kits} quotes={quotes} persistQuotes={persistQuotes} onSendToQuote={goToQuote} />;
+        return <SmartGenerator kits={kits} quotes={quotes} persistQuotes={persistQuotes} onSendToQuote={goToQuote} settings={settings} />;
 
       case TABS.QUOTE:
         return (
@@ -1258,7 +1289,7 @@ export default function App() {
 
   return (
     <div id="root">
-      <div className="sidebar">
+      <div className="sidebar" style={{display:"flex", flexDirection:"column"}}>
         <div className="sidebar-logo">
           <div className="sidebar-logo-mark">SQ</div>
           <div>
@@ -1266,24 +1297,69 @@ export default function App() {
             <div className="sidebar-logo-sub">SYM3 Quotation</div>
           </div>
         </div>
-        {nav.map((item, idx) => {
-          const prevSection = idx > 0 ? nav[idx - 1].section : null;
-          const { Icon } = item;
-          return (
-            <React.Fragment key={item.tab}>
-              {item.section && item.section !== prevSection && (
-                <div className="sidebar-section">{item.section}</div>
-              )}
-              <div
-                className={`sidebar-item ${tab === item.tab ? "active" : ""}`}
-                onClick={() => setTab(item.tab)}
+        <div style={{flex:1}}>
+          {nav.map((item, idx) => {
+            const prevSection = idx > 0 ? nav[idx - 1].section : null;
+            const { Icon } = item;
+            return (
+              <React.Fragment key={item.tab}>
+                {item.section && item.section !== prevSection && (
+                  <div className="sidebar-section">{item.section}</div>
+                )}
+                <div
+                  className={`sidebar-item ${tab === item.tab ? "active" : ""}`}
+                  onClick={() => setTab(item.tab)}
+                >
+                  <Icon size={15} className="sidebar-icon" />
+                  <span>{item.label}</span>
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+
+        {/* ── 환경설정 패널 ── */}
+        <div style={{borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+          <div
+            onClick={() => { setSettingsOpen(o => !o); setSettingsForm(settings); }}
+            style={{display:"flex", alignItems:"center", gap:8, padding:"10px 16px",
+              cursor:"pointer", color:"#64748b", fontSize:12, userSelect:"none"}}
+          >
+            <Settings2 size={13}/>
+            <span style={{flex:1}}>환경설정</span>
+            <span style={{fontSize:10}}>{settingsOpen ? "▲" : "▼"}</span>
+          </div>
+          {settingsOpen && (
+            <div style={{padding:"6px 14px 12px", borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+              {[
+                { key:"exchangeRate", label:"환율 (KRW/USD)" },
+                { key:"icpmsPrice",   label:"ICPMS 분석가 ($)" },
+                { key:"lpcPrice",     label:"LPC 분석가 ($)" },
+              ].map(({ key, label }) => (
+                <div key={key} style={{marginBottom:7}}>
+                  <div style={{fontSize:10, color:"#475569", marginBottom:3}}>{label}</div>
+                  <input
+                    type="number" step="0.01"
+                    value={settingsForm[key] ?? ""}
+                    onChange={e => setSettingsForm(p => ({ ...p, [key]: Number(e.target.value) }))}
+                    style={{width:"100%", fontSize:12, padding:"4px 7px",
+                      border:"1px solid rgba(255,255,255,0.12)", borderRadius:6,
+                      background:"rgba(255,255,255,0.06)", color:"#e2e8f0", outline:"none"}}
+                  />
+                </div>
+              ))}
+              <button
+                onClick={saveSettings}
+                disabled={settingsSaving}
+                style={{width:"100%", padding:"5px 0", fontSize:11, fontWeight:700,
+                  borderRadius:6, background:"#2563eb", color:"white", border:"none",
+                  cursor: settingsSaving ? "not-allowed" : "pointer", opacity: settingsSaving ? 0.7 : 1}}
               >
-                <Icon size={15} className="sidebar-icon" />
-                <span>{item.label}</span>
-              </div>
-            </React.Fragment>
-          );
-        })}
+                {settingsSaving ? "저장 중…" : "저장"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="main">
